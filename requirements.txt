@@ -7,3 +7,4 @@ python-dotenv
 supabase
 altair
 jinja2
+matplotlib
