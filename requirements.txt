@@ -1,10 +1,9 @@
-streamlit==1.29.0            # Latest major stable release
-pandas==2.1.4                # LTS release (latest stable versión)
-numpy==2.4.1                 # Latest scientific computing package para arrays :contentReference[oaicite:0]{index=0}
-requests==2.31.0             # Latest HTTP requests library
-beautifulsoup4==4.12.3       # Latest BeautifulSoup HTML parser :contentReference[oaicite:1]{index=1}
-python-dotenv==1.2.1         # Latest .env loader :contentReference[oaicite:2]{index=2}
-supabase==2.27.2             # Latest Python Supabase client :contentReference[oaicite:3]{index=3}
-altair==6.0.0                # Latest Altair visualization library :contentReference[oaicite:4]{index=4}
-jinja2==3.1.3                # Latest Jinja2 templating engine
-playwright==1.57.0           # Latest Playwright version :contentReference[oaicite:5]{index=5}
+streamlit
+pandas
+numpy
+requests
+beautifulsoup4
+python-dotenv
+supabase
+altair
+jinja2
