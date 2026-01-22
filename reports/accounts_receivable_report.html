@@ -1,0 +1,3323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accounts Receivable Report</title>
+
+    <style>
+        :root {
+            /* Lighter, print-friendly heat colors */
+            --heat-blue-r: 70;
+            --heat-blue-g: 130;
+            --heat-blue-b: 220;
+
+            --heat-green-r: 70;
+            --heat-green-g: 170;
+            --heat-green-b: 110;
+
+            /* Max opacity for heat cells (keep it light) */
+            --heat-alpha-max: 0.38;
+
+            /* Past due chips */
+            --chip-red-bg: rgba(220, 60, 60, 0.16);
+            --chip-red-tx: #7a1c1c;
+
+            --chip-green-bg: rgba(60, 170, 110, 0.16);
+            --chip-green-tx: #124d34;
+
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --line: #d1d5db;
+            --panel: #f3f4f6;
+        }
+
+        /* Make background colors visible in print */
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            font-size: 11px;
+            color: var(--ink);
+            margin: 18px;
+            font-weight: 400;
+            /* no bold base */
+        }
+
+        /* Report Header */
+        .report-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 2px solid var(--line);
+            padding-bottom: 10px;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 20px;
+            letter-spacing: 0.3px;
+            font-weight: 600;
+            /* lighter than before */
+            text-transform: uppercase;
+        }
+
+        .report-meta {
+            text-align: right;
+            color: var(--muted);
+            font-size: 10px;
+            line-height: 1.35;
+            white-space: nowrap;
+            font-weight: 400;
+        }
+
+        /* Sections */
+        .vendor-section {
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--line);
+        }
+
+        .vendor-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 0 8px 0;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            /* lighter */
+            letter-spacing: 0.2px;
+        }
+
+        .vendor-pill {
+            font-size: 10px;
+            color: var(--muted);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 4px 10px;
+            white-space: nowrap;
+            font-weight: 400;
+        }
+
+        h3 {
+            margin: 12px 0 6px 0;
+            font-size: 12px;
+            font-weight: 600;
+            /* lighter */
+            color: #111827;
+            padding: 6px 10px;
+            background: #fafafa;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+
+            /* Key change: let columns auto-size to content */
+            table-layout: auto;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--line);
+            padding: 6px 7px;
+            text-align: right;
+            vertical-align: top;
+
+            /* Key change: allow wrapping (no ellipsis) */
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+
+            font-weight: 400;
+            /* remove bold */
+        }
+
+        th {
+            background: var(--panel);
+            text-align: center;
+            color: #111827;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+
+            /* not bold */
+            font-weight: 500;
+        }
+
+        th.sortable:hover {
+            filter: brightness(0.98);
+        }
+
+        th .sort-indicator {
+            margin-left: 6px;
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        /* Subtotals / totals (no bold now) */
+        .subtotal td {
+            background: #fbfbfb;
+            font-weight: 400;
+        }
+
+        .vendor-total {
+            margin-top: 8px;
+            text-align: right;
+            font-size: 12px;
+            color: #111827;
+            font-weight: 400;
+        }
+
+        .grand-total {
+            margin-top: 22px;
+            text-align: right;
+            font-size: 15px;
+            padding-top: 10px;
+            border-top: 2px solid var(--line);
+            font-weight: 400;
+        }
+
+        /* Conditional styles */
+        td.pastdue-yes {
+            background: var(--chip-red-bg);
+            color: var(--chip-red-tx);
+            text-align: center;
+            font-weight: 400;
+        }
+
+        td.pastdue-no {
+            background: var(--chip-green-bg);
+            color: var(--chip-green-tx);
+            text-align: center;
+            font-weight: 400;
+        }
+
+        td.heat {
+            font-variant-numeric: tabular-nums;
+            font-weight: 400;
+            /* no bold */
+            color: #111;
+            /* ALWAYS black (per your request) */
+        }
+
+        .pastdue-filters {
+            display: flex;
+            gap: 6px;
+        }
+
+        .pastdue-filters button {
+            font-size: 10px;
+            padding: 4px 8px;
+            border: 1px solid var(--line);
+            background: #fff;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .pastdue-filters button.active {
+            background: var(--panel);
+        }
+
+
+        /* Print rules: ALWAYS continue; do not force new pages at big-table starts */
+        @media print {
+            .pastdue-filters {
+                display: none !important;
+            }
+
+            body {
+                margin: 10mm;
+            }
+
+            /* Key change: DO NOT prevent page breaks inside big tables */
+            .vendor-section,
+            table,
+            tbody,
+            tr,
+            td,
+            th {
+                break-inside: auto !important;
+                page-break-inside: auto !important;
+            }
+
+            /* Keep header row repeating if a table spans pages */
+            thead {
+                display: table-header-group;
+            }
+
+            tfoot {
+                display: table-footer-group;
+            }
+
+            /* Avoid starting a new page because of headings */
+            h2,
+            h3,
+            table {
+                break-before: auto !important;
+                page-break-before: auto !important;
+            }
+        }
+    </style>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+
+            // 1) Beautify column headers: snake_case -> Title Case
+            document.querySelectorAll("th.sortable").forEach(th => {
+                const raw = (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
+                const pretty = raw
+                    .replace(/_/g, " ")
+                    .toLowerCase()
+                    .replace(/\b\w/g, c => c.toUpperCase());
+                if (th.childNodes[0]) th.childNodes[0].nodeValue = pretty + " ";
+                else th.textContent = pretty;
+            });
+
+            // 2) Past Due filter buttons (works across all tables)
+            const btns = Array.from(document.querySelectorAll(".pastdue-filters button"));
+            const tables = Array.from(document.querySelectorAll("table.sortable-table"));
+
+            if (btns.length) {
+                function applyFilter(filter) {
+                    tables.forEach(table => {
+                        table.querySelectorAll("tbody tr").forEach(row => {
+                            const cell = row.querySelector("td.pastdue-yes, td.pastdue-no");
+                            if (!cell || filter === "all") {
+                                row.style.display = "";
+                                return;
+                            }
+                            const isPastDue = cell.classList.contains("pastdue-yes");
+                            if (filter === "true") row.style.display = isPastDue ? "" : "none";
+                            if (filter === "false") row.style.display = !isPastDue ? "" : "none";
+                        });
+                    });
+                }
+
+                btns.forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        btns.forEach(b => b.classList.remove("active"));
+                        btn.classList.add("active");
+                        applyFilter(btn.dataset.filter);
+                    });
+                });
+
+                applyFilter(
+                    document.querySelector(".pastdue-filters button.active")?.dataset.filter || "all"
+                );
+            }
+
+            // 3) Number formatting in tables (skip Past Due; show Yes / No)
+            document.querySelectorAll("table.sortable-table td").forEach(td => {
+
+                // Handle Past Due explicitly
+                if (td.classList.contains("pastdue-yes")) {
+                    td.textContent = "Yes";
+                    return;
+                }
+                if (td.classList.contains("pastdue-no")) {
+                    td.textContent = "No";
+                    return;
+                }
+
+                // Numeric formatting for everything else
+                const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
+                if (!raw) return;
+
+                const cleaned = raw.replace(/[\s,]/g, "");
+                if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+
+                const num = Number(cleaned);
+                if (Number.isNaN(num)) return;
+
+                const hasDecimals = Math.abs(num % 1) > 0;
+
+                td.textContent = num.toLocaleString("en-CA", {
+                    minimumFractionDigits: hasDecimals ? 2 : 0,
+                    maximumFractionDigits: 2
+                });
+            });
+
+            // 4) Format Vendor Total and Grand Total (commas too)
+            document.querySelectorAll(".vendor-pill, .grand-total").forEach(el => {
+                const txt = el.textContent;
+                const match = txt.match(/([-+]?\d[\d,]*\.?\d*)/);
+                if (!match) return;
+
+                const num = Number(match[1].replace(/,/g, ""));
+                if (Number.isNaN(num)) return;
+
+                const formatted = num.toLocaleString("en-CA", {
+                    minimumFractionDigits: num % 1 ? 2 : 0,
+                    maximumFractionDigits: 2
+                });
+
+                el.textContent = txt.replace(match[1], formatted);
+            });
+
+        });
+    </script>
+
+</head>
+
+<body>
+
+    <div class="report-header">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <h1>Unpaid Invoices</h1>
+
+            <!-- Filters (screen only) -->
+            <div class="pastdue-filters">
+                <button data-filter="all" class="active">All</button>
+                <button data-filter="true">Past Due</button>
+                <button data-filter="false">Not Past Due</button>
+            </div>
+        </div>
+
+        <img src="https://cnetbuildingmaintenanceservices.ca/wp-content/uploads/2022/04/Cnet_logo_apr2022_large.png"
+            alt="CNET Building Maintenance Services" style="height:42px; object-fit:contain;" />
+    </div>
+
+
+
+    
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: 12433087 Canada Inc.</h2>
+            <div class="vendor-pill">Vendor total: 2596.81</div>
+        </div>
+
+        
+        <h3>Buyer: 2501308 Ontario Inc</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2975">2975</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-30">2025-05-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="237.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                237
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="791.0"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        791.0
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="1540 kilborn - window cleaning - april 10th, 2025">1540 Kilborn - Window cleaning - April 10th, 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="791.0">791.00</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <h3>Buyer: Allen Maintenance Ltd-47</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2533">2533</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-16">2025-04-16</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="281.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                281
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="706.25"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.29874213836477986);">
+                                        706.25
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="99 fifth av (bank and fifth commercial) - carpet cleaning - march 11th, 2025">99 Fifth Av (bank and fifth Commercial) - Carpet Cleaning - March 11th, 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2776">2776</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-13">2025-05-13</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="254.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.3434875444839858);">
+                                254
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="898.35"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        898.35
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="full cleaning of cubes/workstations and deep cleaning of carpets">Full cleaning of cubes/workstations and Deep cleaning of carpets</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="1604.6">1604.60</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <h3>Buyer: Controlnet</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2734">2734</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-06">2025-05-06</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="261.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                261
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="201.21"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        201.21
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="550 de la cite- clean the locker inside and around and the ceiling pipe - march 20th, 2025">550 De la Cite- clean the locker inside and around and the ceiling pipe - March 20th, 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="201.21">201.21</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+
+    </section>
+    
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: 12887533 Canada Inc-Ramirez</h2>
+            <div class="vendor-pill">Vendor total: 3359.14</div>
+        </div>
+
+        
+        <h3>Buyer: 10342548 Canda Inc</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2440">2440</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="1127.38"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        1127.38
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services 311 mcarthur ave">Janitorial Services 311 McArthur Ave</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2446">2446</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="805.13"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.2713809008497578);">
+                                        805.13
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services, 2355 st laurent, ottawa,on">Janitorial Services, 2355 St Laurent, ottawa,ON</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2447">2447</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="254.25"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.08569869963987298);">
+                                        254.25
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services, 366 brant, ottawa,on">Janitorial Services, 366 Brant, ottawa,ON</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2450">2450</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="586.19"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.19758395572034276);">
+                                        586.19
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services 21 james st , ottawa on ( 1 to 15 march 2025 )">Janitorial Services 21 James St , Ottawa ON ( 1 to 15 March 2025 )</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2452">2452</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="586.19"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.19758395572034276);">
+                                        586.19
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services 420 gilmour st , ottawa , on    march ( 1-15 ) 2025">Janitorial Services 420 Gilmour St , Ottawa , ON    MARCH ( 1-15 ) 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="3359.1400000000003">3359.14</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+
+    </section>
+    
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: 13037622 Canada Inc</h2>
+            <div class="vendor-pill">Vendor total: 10359.83</div>
+        </div>
+
+        
+        <h3>Buyer: Jean Coutu Du Plateau</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="1625">1625</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2024-11-30">2024-11-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="418.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                418
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="2125.52"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.2942678621523843);">
+                                        2125.52
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services at 205 boul du plateau (jean coutu 317-plateau)- november 2024">Janitorial Services at 205 Boul du Plateau (Jean Coutu 317-Plateau)- November 2024</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2152">2152</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-02-28">2025-02-28</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="328.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.29818181818181816);">
+                                328
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="2744.77"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        2744.77
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services at 205 boul du plateau (jean coutu 317-plateau)- february 2025">Janitorial Services at 205 Boul du Plateau (Jean Coutu 317-Plateau)- February 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2300">2300</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-03-31">2025-03-31</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="297.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.27);">
+                                297
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="2744.77"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        2744.77
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services at 205 boul du plateau (jean coutu 317-plateau)- march 2025">Janitorial Services at 205 Boul du Plateau (Jean Coutu 317-Plateau)- March 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2605">2605</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-30">2025-04-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="267.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.2427272727272727);">
+                                267
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="2744.77"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        2744.77
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services at 205 boul du plateau (jean coutu 317-plateau)- april 2025">Janitorial Services at 205 Boul du Plateau (Jean Coutu 317-Plateau)- April 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="10359.83">10359.83</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+
+    </section>
+    
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: 15652286 Canada Inc-Anssuini</h2>
+            <div class="vendor-pill">Vendor total: 534.15</div>
+        </div>
+
+        
+        <h3>Buyer: Allen Maintenance Ltd63- DO NOT USE</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2087">2087</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-02-28">2025-02-28</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="regular">Regular</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="328.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                328
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="534.15"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        534.15
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="janitorial services at ottawa police association-september 2024">Janitorial Services at Ottawa Police Association-September 2024</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="534.15">534.15</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+
+    </section>
+    
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: 9359-6633 Quebec Inc</h2>
+            <div class="vendor-pill">Vendor total: 5449.01</div>
+        </div>
+
+        
+        <h3>Buyer: BGIS SCS</h3>
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    
+                    <th class="sortable" data-key="invoice_id">
+                        invoice_id<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="issue_date">
+                        issue_date<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="invoice_type">
+                        invoice_type<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="days_since_issue">
+                        days_since_issue<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="past_due">
+                        past_due<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="total_amount_with_taxes">
+                        total_amount_with_taxes<span class="sort-indicator"></span>
+                    </th>
+                    
+                    <th class="sortable" data-key="work_description">
+                        work_description<span class="sort-indicator"></span>
+                    </th>
+                    
+                </tr>
+            </thead>
+
+            <tbody>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2047">2047</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-01-30">2025-01-30</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="357.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.38);">
+                                357
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="480.25"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.10352564102564103);">
+                                        480.25
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="tda0616-tdc77938215	steam washing  of interior carpets with truck mount (requested by the client) 	january 24,2025">TDA0616-TDC77938215	Steam washing  of interior carpets with truck mount (requested by the client) 	January 24,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2701">2701</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-28">2025-04-28</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="269.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.2863305322128852);">
+                                269
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="546.13"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.11772713864306784);">
+                                        546.13
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="b03294 - bca78760023strip and wax of the floor in the mechanical room located inside the garage ( dans le garage dans le bureau des mécanicien il faudrait décapé et ciré le plancher svp me prévenir quand ca sera fait)april 26,2025">B03294 - BCA78760023Strip and wax of the floor in the mechanical room located inside the garage ( Dans le Garage dans le bureau des mécanicien il faudrait décapé et ciré le plancher svp me prévenir quand ca sera fait)April 26,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2702">2702</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-04-28">2025-04-28</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="269.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.2863305322128852);">
+                                269
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="718.59"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.15490367597004767);">
+                                        718.59
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="b09146- bca79080678interior carpet cleaning april 25,2025">B09146- BCA79080678Interior Carpet Cleaning April 25,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2732">2732</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-01">2025-05-01</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="266.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.2831372549019608);">
+                                266
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="201.21"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.04337406398910824);">
+                                        201.21
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="bmo1233 - bmo78854564service call to remove the plexiglass in the corner of the lobbyapril 30,2025">BMO1233 - BMO78854564Service call to remove the plexiglass in the corner of the lobbyApril 30,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2752">2752</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-07">2025-05-07</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="260.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.27675070028011206);">
+                                260
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="497.2"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.10717948717948718);">
+                                        497.2
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="b06909- bca268679540temporary staff replacement bellapril 2-9-21-26,2025">B06909- BCA268679540Temporary Staff Replacement BellApril 2-9-21-26,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2753">2753</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-07">2025-05-07</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="260.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.27675070028011206);">
+                                260
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="1762.8"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.38);">
+                                        1762.8
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="b06913 - bca268679517temporary staff replacement bellapril 2 - 4 - 7 - 9- 11 - 14 - 16 - 18 - 21 - 23 - 25 - 28 - 30, 2025">B06913 - BCA268679517Temporary Staff Replacement BellApril 2 - 4 - 7 - 9- 11 - 14 - 16 - 18 - 21 - 23 - 25 - 28 - 30, 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2754">2754</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-07">2025-05-07</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="260.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.27675070028011206);">
+                                260
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="423.58"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.091309507601543);">
+                                        423.58
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="b11499- bca268679535temporary staff replacement bellapril 1 - 3 - 8 - 10 - 15 - 17 - 22 - 24 - 29 , 2025">B11499- BCA268679535Temporary Staff Replacement BellApril 1 - 3 - 8 - 10 - 15 - 17 - 22 - 24 - 29 , 2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+                <tr>
+                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2778">2778</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="2025-05-13">2025-05-13</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="one shot">One Shot</td>
+                                    
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    
+
+                    
+                    
+                    
+                     
+
+                        
+                         
+
+                            <td class="heat" data-sort="254.0"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), 0.27036414565826333);">
+                                254
+                            </td>
+                            
+
+                            
+                            
+                                    
+                    
+                    
+
+                    
+                    
+                    
+                    <td class="pastdue-yes" data-sort="1">
+                        True
+                    </td>
+
+                    
+                    
+                                    
+                    
+                    
+
+                    
+                    
+                            
+                            
+                             
+
+                                
+                                 
+
+                                    <td class="heat" data-sort="819.25"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), 0.1766025641025641);">
+                                        819.25
+                                    </td>
+
+                                    
+                                    
+                    
+                    
+
+                    
+                    
+                                    
+                                    <td data-sort="tda0620 - tdc79134823 request to do a big clean up due to another branch merging with them and need to have some garbage picked up (marketing material, christmas tree, decorations etc...). may 09,2025">TDA0620 - TDC79134823 Request to do a big clean up due to another branch merging with them and need to have some garbage picked up (marketing material, Christmas tree, decorations etc...). May 09,2025</td>
+                                    
+                                    
+                                    
+                </tr>
+                
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="6">Subtotal</td>
+                    <td data-sort="5449.01">5449.01</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+
+    </section>
+    
+
+    <div class="grand-total">
+        Grand total: 22298.94
+    </div>
+
+    <script>
+        // Click-to-sort for each table (sorts only TBODY rows; keeps subtotal in TFOOT)
+        (function () {
+            function isNumericLike(val) {
+                if (val === null || val === undefined) return false;
+                const s = String(val).trim();
+                if (s === "") return false;
+                return !Number.isNaN(Number(s.replace(/[, $]/g, "")));
+            }
+
+            function getCellSortValue(td) {
+                if (!td) return "";
+                const ds = td.getAttribute("data-sort");
+                if (ds !== null) return ds;
+
+                const text = td.textContent.trim();
+                return text.replace(/[, $]/g, "");
+            }
+
+            function compareValues(a, b, asc) {
+                const aNum = isNumericLike(a) ? Number(String(a).replace(/[, $]/g, "")) : null;
+                const bNum = isNumericLike(b) ? Number(String(b).replace(/[, $]/g, "")) : null;
+
+                let cmp;
+                if (aNum !== null && bNum !== null) {
+                    cmp = aNum - bNum;
+                } else {
+                    cmp = String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+                }
+                return asc ? cmp : -cmp;
+            }
+
+            function clearIndicators(ths) {
+                ths.forEach(th => {
+                    th.dataset.sortDir = "";
+                    const ind = th.querySelector(".sort-indicator");
+                    if (ind) ind.textContent = "";
+                });
+            }
+
+            document.querySelectorAll("table.sortable-table").forEach((table) => {
+                const thead = table.querySelector("thead");
+                const tbody = table.querySelector("tbody");
+                if (!thead || !tbody) return;
+
+                const headers = Array.from(thead.querySelectorAll("th.sortable"));
+                headers.forEach((th, idx) => {
+                    th.addEventListener("click", () => {
+                        const current = th.dataset.sortDir === "asc" ? "asc" : th.dataset.sortDir === "desc" ? "desc" : "";
+                        const nextDir = current === "asc" ? "desc" : "asc";
+
+                        clearIndicators(headers);
+                        th.dataset.sortDir = nextDir;
+
+                        const indicator = th.querySelector(".sort-indicator");
+                        if (indicator) indicator.textContent = nextDir === "asc" ? "▲" : "▼";
+
+                        const rows = Array.from(tbody.querySelectorAll("tr"));
+                        rows.sort((r1, r2) => {
+                            const c1 = r1.children[idx];
+                            const c2 = r2.children[idx];
+                            const v1 = getCellSortValue(c1);
+                            const v2 = getCellSortValue(c2);
+                            return compareValues(v1, v2, nextDir === "asc");
+                        });
+
+                        rows.forEach(r => tbody.appendChild(r));
+                    });
+                });
+            });
+        })();
+    </script>
+
+</body>
+
+</html>

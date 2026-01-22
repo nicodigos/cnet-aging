@@ -1,0 +1,49 @@
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #222;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.client-section {
+    page-break-after: always;
+}
+
+h2 {
+    margin-top: 20px;
+    border-bottom: 2px solid #444;
+    padding-bottom: 4px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th,
+td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: right;
+}
+
+th {
+    background-color: #f2f2f2;
+    text-align: center;
+}
+
+.subtotal td {
+    font-weight: bold;
+    background-color: #fafafa;
+}
+
+.grand-total {
+    text-align: right;
+    font-size: 14px;
+    font-weight: bold;
+}
