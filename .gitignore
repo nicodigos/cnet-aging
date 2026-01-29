@@ -4,3 +4,4 @@ __pycache__/
 ms-playwright/
 .playwright/
 *.log
+reports/*

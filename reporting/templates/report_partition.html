@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accounts Receivable Report</title>
+
+    <style>
+        :root {
+            /* Lighter, print-friendly heat colors */
+            --heat-blue-r: 70;
+            --heat-blue-g: 130;
+            --heat-blue-b: 220;
+
+            --heat-green-r: 70;
+            --heat-green-g: 170;
+            --heat-green-b: 110;
+
+            /* Max opacity for heat cells (keep it light) */
+            --heat-alpha-max: 0.38;
+
+            /* Past due chips */
+            --chip-red-bg: rgba(220, 60, 60, 0.16);
+            --chip-red-tx: #7a1c1c;
+
+            --chip-green-bg: rgba(60, 170, 110, 0.16);
+            --chip-green-tx: #124d34;
+
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --line: #d1d5db;
+            --panel: #f3f4f6;
+        }
+
+        /* Make background colors visible in print */
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            font-size: 11px;
+            color: var(--ink);
+            margin: 18px;
+            font-weight: 400;
+            /* no bold base */
+        }
+
+        /* Report Header */
+        .report-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 2px solid var(--line);
+            padding-bottom: 10px;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 20px;
+            letter-spacing: 0.3px;
+            font-weight: 600;
+            /* lighter than before */
+            text-transform: uppercase;
+        }
+
+        /* Sections */
+        .vendor-section {
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--line);
+        }
+
+        .vendor-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 0 8px 0;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            /* lighter */
+            letter-spacing: 0.2px;
+        }
+
+        h3 {
+            margin: 12px 0 6px 0;
+            font-size: 12px;
+            font-weight: 600;
+            /* lighter */
+            color: #111827;
+            padding: 6px 10px;
+            background: #fafafa;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+
+            /* Key change: let columns auto-size to content */
+            table-layout: auto;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--line);
+            padding: 6px 7px;
+            text-align: right;
+            vertical-align: top;
+
+            /* Key change: allow wrapping (no ellipsis) */
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+
+            font-weight: 400;
+            /* remove bold */
+        }
+
+        th {
+            background: var(--panel);
+            text-align: center;
+            color: #111827;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+
+            /* not bold */
+            font-weight: 500;
+        }
+
+        th.sortable:hover {
+            filter: brightness(0.98);
+        }
+
+        th .sort-indicator {
+            margin-left: 6px;
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        /* Subtotals (keep, but not bold) */
+        .subtotal td {
+            background: #fbfbfb;
+            font-weight: 400;
+        }
+
+        /* Conditional styles */
+        td.pastdue-yes {
+            background: var(--chip-red-bg);
+            color: var(--chip-red-tx);
+            text-align: center;
+            font-weight: 400;
+        }
+
+        td.pastdue-no {
+            background: var(--chip-green-bg);
+            color: var(--chip-green-tx);
+            text-align: center;
+            font-weight: 400;
+        }
+
+        td.heat {
+            font-variant-numeric: tabular-nums;
+            font-weight: 400;
+            /* no bold */
+            color: #111;
+            /* ALWAYS black */
+        }
+
+        .pastdue-filters {
+            display: flex;
+            gap: 6px;
+        }
+
+        .pastdue-filters button {
+            font-size: 10px;
+            padding: 4px 8px;
+            border: 1px solid var(--line);
+            background: #fff;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .pastdue-filters button.active {
+            background: var(--panel);
+        }
+
+        /* Print rules */
+        @media print {
+            .pastdue-filters {
+                display: none !important;
+            }
+
+            body {
+                margin: 10mm;
+            }
+
+            .vendor-section,
+            table,
+            tbody,
+            tr,
+            td,
+            th {
+                break-inside: auto !important;
+                page-break-inside: auto !important;
+            }
+
+            thead {
+                display: table-header-group;
+            }
+
+            tfoot {
+                display: table-footer-group;
+            }
+
+            h2,
+            h3,
+            table {
+                break-before: auto !important;
+                page-break-before: auto !important;
+            }
+        }
+    </style>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+
+            // 1) Beautify column headers: snake_case -> Title Case
+            document.querySelectorAll("th.sortable").forEach(th => {
+                const raw = (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
+                const pretty = raw
+                    .replace(/_/g, " ")
+                    .toLowerCase()
+                    .replace(/\b\w/g, c => c.toUpperCase());
+                if (th.childNodes[0]) th.childNodes[0].nodeValue = pretty + " ";
+                else th.textContent = pretty;
+            });
+
+            // 2) Past Due filter buttons (works across all tables)
+            const btns = Array.from(document.querySelectorAll(".pastdue-filters button"));
+            const tables = Array.from(document.querySelectorAll("table.sortable-table"));
+
+            if (btns.length) {
+                function applyFilter(filter) {
+                    tables.forEach(table => {
+                        table.querySelectorAll("tbody tr").forEach(row => {
+                            const cell = row.querySelector("td.pastdue-yes, td.pastdue-no");
+                            if (!cell || filter === "all") {
+                                row.style.display = "";
+                                return;
+                            }
+                            const isPastDue = cell.classList.contains("pastdue-yes");
+                            if (filter === "true") row.style.display = isPastDue ? "" : "none";
+                            if (filter === "false") row.style.display = !isPastDue ? "" : "none";
+                        });
+                    });
+                }
+
+                btns.forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        btns.forEach(b => b.classList.remove("active"));
+                        btn.classList.add("active");
+                        applyFilter(btn.dataset.filter);
+                    });
+                });
+
+                applyFilter(
+                    document.querySelector(".pastdue-filters button.active")?.dataset.filter || "all"
+                );
+            }
+
+            // 3) Number formatting in tables (skip Past Due; show Yes / No)
+            document.querySelectorAll("table.sortable-table td").forEach(td => {
+
+                // Handle Past Due explicitly
+                if (td.classList.contains("pastdue-yes")) {
+                    td.textContent = "Yes";
+                    return;
+                }
+                if (td.classList.contains("pastdue-no")) {
+                    td.textContent = "No";
+                    return;
+                }
+
+                // Numeric formatting for everything else
+                const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
+                if (!raw) return;
+
+                const cleaned = raw.replace(/[\s,]/g, "");
+                if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+
+                const num = Number(cleaned);
+                if (Number.isNaN(num)) return;
+
+                const hasDecimals = Math.abs(num % 1) > 0;
+
+                td.textContent = num.toLocaleString("en-CA", {
+                    minimumFractionDigits: hasDecimals ? 2 : 0,
+                    maximumFractionDigits: 2
+                });
+            });
+
+        });
+    </script>
+
+</head>
+
+<body>
+
+    <div class="report-header">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <h1>Unpaid Invoices</h1>
+
+            <!-- Filters (screen only) -->
+            <div class="pastdue-filters">
+                <button data-filter="all" class="active">All</button>
+                <button data-filter="true">Past Due</button>
+                <button data-filter="false">Not Past Due</button>
+            </div>
+        </div>
+
+        <img src="https://cnetbuildingmaintenanceservices.ca/wp-content/uploads/2022/04/Cnet_logo_apr2022_large.png"
+            alt="CNET Building Maintenance Services" style="height:42px; object-fit:contain;" />
+    </div>
+
+    {# Partitioned template expects:
+    vendor, buyer, rows, buyer_total (optional)
+    It also supports the old context if you ever pass vendors/buyers.
+    #}
+
+    {% if vendors is defined %}
+    {% for v in vendors %}
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: {{ v.vendor }}</h2>
+        </div>
+
+        {% for b in v.buyers %}
+        <h3>Buyer: {{ b.buyer }}</h3>
+
+        {% if not b.rows or (b.rows|length == 0) %}
+        <div style="color: var(--muted); padding: 8px 2px;">No rows for this selection.</div>
+        {% else %}
+
+        {% set ns = namespace(max_days=0, max_amt=0) %}
+        {% for r in b.rows %}
+        {% if 'days_since_issue' in r and r['days_since_issue'] is not none %}
+        {% set d = (r['days_since_issue']|float) %}
+        {% if d > ns.max_days %}{% set ns.max_days = d %}{% endif %}
+        {% endif %}
+        {% if 'total_amount_with_taxes' in r and r['total_amount_with_taxes'] is not none %}
+        {% set a = (r['total_amount_with_taxes']|float) %}
+        {% if a > ns.max_amt %}{% set ns.max_amt = a %}{% endif %}
+        {% endif %}
+        {% endfor %}
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    {% for key in b.rows[0].keys() %}
+                    <th class="sortable" data-key="{{ key }}">
+                        {{ key }}<span class="sort-indicator"></span>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for row in b.rows %}
+                <tr>
+                    {% for key, value in row.items() %}
+                    {% set k = key|string|lower %}
+                    {% set vstr = value|string|lower %}
+
+                    {% if k in ['past_due', 'past due'] %}
+                    {% set is_true = vstr in ['true','1','yes','y','past due','overdue'] %}
+                    <td class="{{ 'pastdue-yes' if is_true else 'pastdue-no' }}" data-sort="{{ 1 if is_true else 0 }}">
+                        {{ value }}
+                    </td>
+
+                    {% elif k in ['days_since_issue', 'days since issue'] %}
+                    {% set past_due_val = row.get('past_due') %}
+                    {% set is_past_due = (past_due_val|string|lower) in ['true','1','yes','y','past due','overdue'] %}
+
+                    {% if is_past_due %}
+                    {% set denom = (ns.max_days if ns.max_days > 0 else 1) %}
+                    {% set raw_ratio = (value|float) / denom %}
+                    {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set raw_ratio=1 %}{%
+                        endif %}
+
+                        {% set alpha = raw_ratio * (0.38) %}
+                        {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha=0.38 %}{% endif
+                            %}
+
+                            <td class="heat" data-sort="{{ value|float }}"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), {{ alpha }});">
+                                {{ value }}
+                            </td>
+                            {% else %}
+                            <td data-sort="{{ value|float }}">{{ value }}</td>
+                            {% endif %}
+
+                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes'] %}
+                            {% set denom = (ns.max_amt if ns.max_amt > 0 else 1) %}
+                            {% set raw_ratio = (value|float) / denom %}
+                            {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set
+                                raw_ratio=1 %}{% endif %}
+
+                                {% set alpha = raw_ratio * (0.38) %}
+                                {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha=0.38
+                                    %}{% endif %}
+
+                                    <td class="heat" data-sort="{{ value|float }}"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), {{ alpha }});">
+                                        {{ value }}
+                                    </td>
+
+                                    {% else %}
+                                    {% if value is number %}
+                                    <td data-sort="{{ value }}">{{ value }}</td>
+                                    {% else %}
+                                    <td data-sort="{{ value|string|lower }}">{{ value }}</td>
+                                    {% endif %}
+                                    {% endif %}
+                                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="{{ b.rows[0]|length - 1 }}">Subtotal</td>
+                    <td data-sort="{{ b.subtotal }}">{{ "%.2f"|format(b.subtotal) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endfor %}
+
+    {% else %}
+
+    <section class="vendor-section">
+        <div class="vendor-title">
+            <h2>Vendor: {{ vendor }}</h2>
+        </div>
+
+        <h3>Buyer: {{ buyer }}</h3>
+
+        {% if not rows or (rows|length == 0) %}
+        <div style="color: var(--muted); padding: 8px 2px;">No rows for this selection.</div>
+        {% else %}
+
+        {% set ns = namespace(max_days=0, max_amt=0) %}
+        {% for r in rows %}
+        {% if 'days_since_issue' in r and r['days_since_issue'] is not none %}
+        {% set d = (r['days_since_issue']|float) %}
+        {% if d > ns.max_days %}{% set ns.max_days = d %}{% endif %}
+        {% endif %}
+        {% if 'total_amount_with_taxes' in r and r['total_amount_with_taxes'] is not none %}
+        {% set a = (r['total_amount_with_taxes']|float) %}
+        {% if a > ns.max_amt %}{% set ns.max_amt = a %}{% endif %}
+        {% endif %}
+        {% endfor %}
+
+        <table class="sortable-table">
+            <thead>
+                <tr>
+                    {% for key in rows[0].keys() %}
+                    <th class="sortable" data-key="{{ key }}">
+                        {{ key }}<span class="sort-indicator"></span>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    {% for key, value in row.items() %}
+                    {% set k = key|string|lower %}
+                    {% set vstr = value|string|lower %}
+
+                    {% if k in ['past_due', 'past due'] %}
+                    {% set is_true = vstr in ['true','1','yes','y','past due','overdue'] %}
+                    <td class="{{ 'pastdue-yes' if is_true else 'pastdue-no' }}" data-sort="{{ 1 if is_true else 0 }}">
+                        {{ value }}
+                    </td>
+
+                    {% elif k in ['days_since_issue', 'days since issue'] %}
+                    {% set past_due_val = row.get('past_due') %}
+                    {% set is_past_due = (past_due_val|string|lower) in ['true','1','yes','y','past due','overdue'] %}
+
+                    {% if is_past_due %}
+                    {% set denom = (ns.max_days if ns.max_days > 0 else 1) %}
+                    {% set raw_ratio = (value|float) / denom %}
+                    {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set raw_ratio=1 %}{%
+                        endif %}
+
+                        {% set alpha = raw_ratio * (0.38) %}
+                        {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha=0.38 %}{% endif
+                            %}
+
+                            <td class="heat" data-sort="{{ value|float }}"
+                                style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), {{ alpha }});">
+                                {{ value }}
+                            </td>
+                            {% else %}
+                            <td data-sort="{{ value|float }}">{{ value }}</td>
+                            {% endif %}
+
+                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes'] %}
+                            {% set denom = (ns.max_amt if ns.max_amt > 0 else 1) %}
+                            {% set raw_ratio = (value|float) / denom %}
+                            {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set
+                                raw_ratio=1 %}{% endif %}
+
+                                {% set alpha = raw_ratio * (0.38) %}
+                                {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha=0.38
+                                    %}{% endif %}
+
+                                    <td class="heat" data-sort="{{ value|float }}"
+                                        style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), {{ alpha }});">
+                                        {{ value }}
+                                    </td>
+
+                                    {% else %}
+                                    {% if value is number %}
+                                    <td data-sort="{{ value }}">{{ value }}</td>
+                                    {% else %}
+                                    <td data-sort="{{ value|string|lower }}">{{ value }}</td>
+                                    {% endif %}
+                                    {% endif %}
+                                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+
+            <tfoot>
+                <tr class="subtotal">
+                    <td colspan="{{ rows[0]|length - 1 }}">Subtotal</td>
+                    <td data-sort="{{ buyer_total if buyer_total is defined else 0 }}">{{ "%.2f"|format(buyer_total if
+                        buyer_total is defined else 0) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        {% endif %}
+    </section>
+
+    {% endif %}
+
+    <script>
+        // Click-to-sort for each table (sorts only TBODY rows; keeps subtotal in TFOOT)
+        (function () {
+            function isNumericLike(val) {
+                if (val === null || val === undefined) return false;
+                const s = String(val).trim();
+                if (s === "") return false;
+                return !Number.isNaN(Number(s.replace(/[, $]/g, "")));
+            }
+
+            function getCellSortValue(td) {
+                if (!td) return "";
+                const ds = td.getAttribute("data-sort");
+                if (ds !== null) return ds;
+
+                const text = td.textContent.trim();
+                return text.replace(/[, $]/g, "");
+            }
+
+            function compareValues(a, b, asc) {
+                const aNum = isNumericLike(a) ? Number(String(a).replace(/[, $]/g, "")) : null;
+                const bNum = isNumericLike(b) ? Number(String(b).replace(/[, $]/g, "")) : null;
+
+                let cmp;
+                if (aNum !== null && bNum !== null) {
+                    cmp = aNum - bNum;
+                } else {
+                    cmp = String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+                }
+                return asc ? cmp : -cmp;
+            }
+
+            function clearIndicators(ths) {
+                ths.forEach(th => {
+                    th.dataset.sortDir = "";
+                    const ind = th.querySelector(".sort-indicator");
+                    if (ind) ind.textContent = "";
+                });
+            }
+
+            document.querySelectorAll("table.sortable-table").forEach((table) => {
+                const thead = table.querySelector("thead");
+                const tbody = table.querySelector("tbody");
+                if (!thead || !tbody) return;
+
+                const headers = Array.from(thead.querySelectorAll("th.sortable"));
+                headers.forEach((th, idx) => {
+                    th.addEventListener("click", () => {
+                        const current = th.dataset.sortDir === "asc" ? "asc" : th.dataset.sortDir === "desc" ? "desc" : "";
+                        const nextDir = current === "asc" ? "desc" : "asc";
+
+                        clearIndicators(headers);
+                        th.dataset.sortDir = nextDir;
+
+                        const indicator = th.querySelector(".sort-indicator");
+                        if (indicator) indicator.textContent = nextDir === "asc" ? "▲" : "▼";
+
+                        const rows = Array.from(tbody.querySelectorAll("tr"));
+                        rows.sort((r1, r2) => {
+                            const c1 = r1.children[idx];
+                            const c2 = r2.children[idx];
+                            const v1 = getCellSortValue(c1);
+                            const v2 = getCellSortValue(c2);
+                            return compareValues(v1, v2, nextDir === "asc");
+                        });
+
+                        rows.forEach(r => tbody.appendChild(r));
+                    });
+                });
+            });
+        })();
+    </script>
+
+</body>
+
+</html>
