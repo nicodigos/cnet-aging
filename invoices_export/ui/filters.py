@@ -32,6 +32,14 @@ def render_filters_sidebar(
     st.session_state.setdefault("buyer_selected", [])
     st.session_state.setdefault("vendor_selected", [])
 
+    # Clamp aging_range in case min/max bounds changed between reruns
+    lo, hi = st.session_state["aging_range"]
+    lo = max(int(min_aging), int(lo))
+    hi = min(int(max_aging), int(hi))
+    if lo > hi:
+        lo, hi = int(min_aging), int(max_aging)
+    st.session_state["aging_range"] = (lo, hi)
+
     with st.sidebar:
         st.header("Filters")
 
@@ -46,11 +54,11 @@ def render_filters_sidebar(
             st.session_state["issue_from"] = issue_from
             st.session_state["issue_to"] = issue_to
 
+        # Let session state (key) control the value; do NOT pass value=
         aging_min_val, aging_max_val = st.slider(
             "Aging (days_since_issue)",
             min_value=int(min_aging),
             max_value=int(max_aging),
-            value=st.session_state["aging_range"],
             step=1,
             key="aging_range",
         )
@@ -125,8 +133,16 @@ def render_filters_sidebar(
         st.subheader("Reports")
 
         # Two report generation buttons
-        generate_report_full = st.button("📄 Generate full report (HTML)", use_container_width=True, key="btn_generate_report_full")
-        generate_report_partitioned = st.button("🗂️ Generate partitioned reports (ZIP)", use_container_width=True, key="btn_generate_report_partitioned")
+        generate_report_full = st.button(
+            "📄 Generate full report (HTML)",
+            use_container_width=True,
+            key="btn_generate_report_full",
+        )
+        generate_report_partitioned = st.button(
+            "🗂️ Generate partitioned reports (ZIP)",
+            use_container_width=True,
+            key="btn_generate_report_partitioned",
+        )
 
         st.download_button(
             label="⬇️ Download full report",

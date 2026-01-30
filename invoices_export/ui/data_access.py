@@ -8,10 +8,10 @@ load_dotenv()
 
 VIEW_NAME = os.getenv("SUPABASE_INVOICES_VIEW", "invoices_v")
 URL = os.getenv("SUPABASE_URL")
-KEY = os.getenv("SUPABASE_ANON_KEY")
+KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 if not URL or not KEY:
-    raise RuntimeError("Missing SUPABASE_URL / SUPABASE_ANON_KEY")
+    raise RuntimeError("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY")
 
 supabase = create_client(URL, KEY)
 

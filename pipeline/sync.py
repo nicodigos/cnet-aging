@@ -57,10 +57,10 @@ def run_pipeline():
     load_dotenv()
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_ANON_KEY")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     table = os.getenv("SUPABASE_TABLE")
     if not url or not key or not table:
-        raise RuntimeError("Missing SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_TABLE")
+        raise RuntimeError("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_TABLE")
 
     csv_bytes = get_csv_bytes()
     df = pd.read_csv(io.BytesIO(csv_bytes), engine="python")
