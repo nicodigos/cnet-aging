@@ -112,7 +112,7 @@ def render_filters_sidebar(
         # - default: both selected (via setdefault above)
         # - if user clears all: treat as "no filter" WITHOUT writing to session_state
         internal_external_ui = st.multiselect(
-            "Counterparty Type",
+            "Buyer Type",
             options=["Internal", "External"],
             key="internal_external",
         )
