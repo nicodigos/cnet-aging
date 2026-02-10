@@ -33,7 +33,6 @@
             --panel: #f3f4f6;
         }
 
-        /* Make background colors visible in print */
         * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -45,10 +44,8 @@
             color: var(--ink);
             margin: 18px;
             font-weight: 400;
-            /* no bold base */
         }
 
-        /* Report Header */
         .report-header {
             display: flex;
             align-items: baseline;
@@ -64,11 +61,9 @@
             font-size: 20px;
             letter-spacing: 0.3px;
             font-weight: 600;
-            /* lighter than before */
             text-transform: uppercase;
         }
 
-        /* Sections */
         .vendor-section {
             margin-top: 18px;
             padding-top: 14px;
@@ -87,15 +82,25 @@
             margin: 0;
             font-size: 14px;
             font-weight: 600;
-            /* lighter */
             letter-spacing: 0.2px;
+        }
+
+        /* Added back: vendor pill style (you said "te falto el estilo") */
+        .vendor-pill {
+            font-size: 10px;
+            color: var(--muted);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 4px 10px;
+            white-space: nowrap;
+            font-weight: 400;
         }
 
         h3 {
             margin: 12px 0 6px 0;
             font-size: 12px;
             font-weight: 600;
-            /* lighter */
             color: #111827;
             padding: 6px 10px;
             background: #fafafa;
@@ -103,13 +108,11 @@
             border-radius: 8px;
         }
 
-        /* Tables */
+        /* Tables (NO fixed widths) */
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 8px;
-
-            /* Key change: let columns auto-size to content */
             table-layout: auto;
         }
 
@@ -117,10 +120,10 @@
         td {
             border: 1px solid var(--line);
             padding: 6px 7px;
-            text-align: right;
+            text-align: center;
+            /* center values per request */
             vertical-align: top;
 
-            /* Key change: allow wrapping (no ellipsis) */
             white-space: normal;
             overflow: visible;
             text-overflow: clip;
@@ -128,18 +131,14 @@
             word-break: break-word;
 
             font-weight: 400;
-            /* remove bold */
         }
 
         th {
             background: var(--panel);
-            text-align: center;
             color: #111827;
             cursor: pointer;
             user-select: none;
             position: relative;
-
-            /* not bold */
             font-weight: 500;
         }
 
@@ -154,13 +153,36 @@
             font-weight: 400;
         }
 
-        /* Subtotals (keep, but not bold) */
+        /* Tight cols */
+        th.tight,
+        td.tight {
+            padding: 0 !important;
+        }
+
+        td.tight {
+            white-space: nowrap;
+        }
+
+        th.tight {
+            white-space: normal;
+            overflow-wrap: normal;
+            word-break: normal;
+        }
+
+        /* Work Description takes remaining space */
+        th.workdesc,
+        td.workdesc {
+            text-align: left;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
         .subtotal td {
             background: #fbfbfb;
             font-weight: 400;
         }
 
-        /* Conditional styles */
         td.pastdue-yes {
             background: var(--chip-red-bg);
             color: var(--chip-red-tx);
@@ -178,9 +200,7 @@
         td.heat {
             font-variant-numeric: tabular-nums;
             font-weight: 400;
-            /* no bold */
             color: #111;
-            /* ALWAYS black */
         }
 
         .pastdue-filters {
@@ -201,7 +221,6 @@
             background: var(--panel);
         }
 
-        /* Print rules */
         @media print {
             .pastdue-filters {
                 display: none !important;
@@ -240,11 +259,98 @@
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            const normKey = (k) => String(k || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+            function findColIndex(table, wantedKeys) {
+                const ths = Array.from(table.querySelectorAll("thead th"));
+                for (let i = 0; i < ths.length; i++) {
+                    const k = normKey(ths[i].dataset.key || ths[i].getAttribute("data-key") || ths[i].textContent);
+                    if (wantedKeys.includes(k)) return i;
+                }
+                return -1;
+            }
+
+            function parseNumberFromCell(td) {
+                const raw = (td?.getAttribute("data-sort") ?? td?.textContent ?? "").trim();
+                if (!raw) return 0;
+                const cleaned = raw.replace(/[\s,$]/g, "");
+                const n = Number(cleaned);
+                return Number.isFinite(n) ? n : 0;
+            }
+
+            function formatMoney(n) {
+                return Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function formatGenericNumber(num) {
+                const hasDecimals = Math.abs(num % 1) > 0;
+                return num.toLocaleString("en-CA", {
+                    minimumFractionDigits: hasDecimals ? 2 : 0,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            function rebuildSubtotalRow(table) {
+                const ths = Array.from(table.querySelectorAll("thead th"));
+                const colCount = ths.length;
+                if (!colCount) return;
+
+                const amtIdx = findColIndex(table, ["total_amount_with_taxes", "total_amount_with_tax", "total_amount"]);
+                if (amtIdx < 0) return;
+
+                const tr = table.querySelector("tfoot tr.subtotal");
+                if (!tr) return;
+
+                let subtotal = 0;
+                table.querySelectorAll("tbody tr").forEach(row => {
+                    if (row.style.display === "none") return;
+                    subtotal += parseNumberFromCell(row.children[amtIdx]);
+                });
+
+                tr.innerHTML = "";
+
+                const tdLabel = document.createElement("td");
+                tdLabel.colSpan = Math.max(1, amtIdx);
+                tdLabel.textContent = "Subtotal";
+                tdLabel.style.textAlign = "right";
+                tr.appendChild(tdLabel);
+
+                const tdAmt = document.createElement("td");
+                tdAmt.setAttribute("data-sort", String(subtotal));
+                tdAmt.textContent = formatMoney(subtotal);
+                tr.appendChild(tdAmt);
+
+                const remaining = colCount - (tdLabel.colSpan + 1);
+                for (let i = 0; i < remaining; i++) tr.appendChild(document.createElement("td"));
+            }
+
+            function applyColumnClasses(table) {
+                const workIdx = findColIndex(table, ["work_description", "workdescription", "description", "work_desc"]);
+                const ths = Array.from(table.querySelectorAll("thead th"));
+
+                ths.forEach((th, idx) => {
+                    th.classList.remove("tight", "workdesc");
+                    if (idx === workIdx && workIdx !== -1) th.classList.add("workdesc");
+                    else th.classList.add("tight");
+                });
+
+                table.querySelectorAll("tbody tr").forEach(tr => {
+                    Array.from(tr.children).forEach((td, idx) => {
+                        td.classList.remove("tight", "workdesc");
+                        if (idx === workIdx && workIdx !== -1) td.classList.add("workdesc");
+                        else td.classList.add("tight");
+                    });
+                });
+            }
+
+            function updateAllSubtotalsOnly() {
+                document.querySelectorAll("table.sortable-table").forEach(t => rebuildSubtotalRow(t));
+            }
 
             // 1) Beautify column headers: snake_case -> Title Case
             document.querySelectorAll("th.sortable").forEach(th => {
-                const raw = (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
-                const pretty = raw
+                const key = th.dataset.key || (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
+                const pretty = String(key)
                     .replace(/_/g, " ")
                     .toLowerCase()
                     .replace(/\b\w/g, c => c.toUpperCase());
@@ -252,7 +358,10 @@
                 else th.textContent = pretty;
             });
 
-            // 2) Past Due filter buttons (works across all tables)
+            // Apply column classes (no width fixing; only padding/wrap behavior)
+            document.querySelectorAll("table.sortable-table").forEach(applyColumnClasses);
+
+            // 2) Past Due filter buttons + update subtotals only
             const btns = Array.from(document.querySelectorAll(".pastdue-filters button"));
             const tables = Array.from(document.querySelectorAll("table.sortable-table"));
 
@@ -270,6 +379,7 @@
                             if (filter === "false") row.style.display = !isPastDue ? "" : "none";
                         });
                     });
+                    updateAllSubtotalsOnly();
                 }
 
                 btns.forEach(btn => {
@@ -285,37 +395,63 @@
                 );
             }
 
-            // 3) Number formatting in tables (skip Past Due; show Yes / No)
-            document.querySelectorAll("table.sortable-table td").forEach(td => {
+            // 3) Number formatting in tables:
+            // - Past Due => Yes/No
+            // - Invoice ID => NO thousands separators (only there)
+            // - Everything else numeric => en-CA (with grouping)
+            document.querySelectorAll("table.sortable-table").forEach(table => {
+                const invoiceIdx = findColIndex(table, ["invoice_id", "invoiceid"]);
+                const pastDueIdx = findColIndex(table, ["past_due", "pastdue"]);
 
-                // Handle Past Due explicitly
-                if (td.classList.contains("pastdue-yes")) {
-                    td.textContent = "Yes";
-                    return;
-                }
-                if (td.classList.contains("pastdue-no")) {
-                    td.textContent = "No";
-                    return;
-                }
+                table.querySelectorAll("tbody tr").forEach(tr => {
+                    const tds = Array.from(tr.children);
 
-                // Numeric formatting for everything else
-                const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
-                if (!raw) return;
+                    if (pastDueIdx >= 0 && tds[pastDueIdx]) {
+                        const td = tds[pastDueIdx];
+                        if (td.classList.contains("pastdue-yes")) td.textContent = "Yes";
+                        if (td.classList.contains("pastdue-no")) td.textContent = "No";
+                    }
 
-                const cleaned = raw.replace(/[\s,]/g, "");
-                if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+                    tds.forEach((td, idx) => {
+                        if (!td) return;
+                        if (td.classList.contains("pastdue-yes") || td.classList.contains("pastdue-no")) return;
 
-                const num = Number(cleaned);
-                if (Number.isNaN(num)) return;
+                        const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
+                        if (!raw) return;
 
-                const hasDecimals = Math.abs(num % 1) > 0;
+                        if (idx === invoiceIdx && invoiceIdx >= 0) {
+                            td.textContent = raw.replace(/[\s,]/g, "");
+                            return;
+                        }
 
-                td.textContent = num.toLocaleString("en-CA", {
-                    minimumFractionDigits: hasDecimals ? 2 : 0,
-                    maximumFractionDigits: 2
+                        const cleaned = raw.replace(/[\s,]/g, "");
+                        if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+
+                        const num = Number(cleaned);
+                        if (!Number.isFinite(num)) return;
+
+                        td.textContent = formatGenericNumber(num);
+                    });
                 });
             });
 
+            // IMPORTANT: format the vendor-pill numbers with thousands separators + 2 decimals
+            // Your complaint: it showed "804309.02" instead of "804,309.02"
+            document.querySelectorAll(".vendor-pill").forEach(el => {
+                const txt = el.textContent;
+                const replaced = txt.replace(/([-+]?\d[\d,]*\.?\d*)/g, (m) => {
+                    const n = Number(String(m).replace(/,/g, ""));
+                    if (!Number.isFinite(n)) return m;
+                    return n.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                });
+                el.textContent = replaced;
+            });
+
+            updateAllSubtotalsOnly();
+
+            window.addEventListener("beforeprint", () => {
+                updateAllSubtotalsOnly();
+            });
         });
     </script>
 
@@ -327,7 +463,6 @@
         <div style="display:flex; align-items:center; gap:14px;">
             <h1>Unpaid Invoices</h1>
 
-            <!-- Filters (screen only) -->
             <div class="pastdue-filters">
                 <button data-filter="all" class="active">All</button>
                 <button data-filter="true">Past Due</button>
@@ -346,9 +481,29 @@
 
     {% if vendors is defined %}
     {% for v in vendors %}
+
+    {% set vns = namespace(total=0, current=0, past=0) %}
+    {% for b in v.buyers %}
+    {% for r in b.rows %}
+    {% set pd = (r.get('past_due')|string|lower) in ['true','1','yes','y','past due','overdue'] %}
+    {% set amt = (r.get('total_amount_with_taxes')|float if r.get('total_amount_with_taxes') is not none else 0) %}
+    {% set vns.total = vns.total + amt %}
+    {% if pd %}
+    {% set vns.past = vns.past + amt %}
+    {% else %}
+    {% set vns.current = vns.current + amt %}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+
     <section class="vendor-section">
         <div class="vendor-title">
             <h2>Vendor: {{ v.vendor }}</h2>
+            <div class="vendor-pill">
+                Vendor total: {{ "%.2f"|format(vns.total) }}
+                | Current: {{ "%.2f"|format(vns.current) }}
+                | Past due: {{ "%.2f"|format(vns.past) }}
+            </div>
         </div>
 
         {% for b in v.buyers %}
@@ -458,9 +613,26 @@
 
     {% else %}
 
+    {% set vns = namespace(total=0, current=0, past=0) %}
+    {% for r in rows %}
+    {% set pd = (r.get('past_due')|string|lower) in ['true','1','yes','y','past due','overdue'] %}
+    {% set amt = (r.get('total_amount_with_taxes')|float if r.get('total_amount_with_taxes') is not none else 0) %}
+    {% set vns.total = vns.total + amt %}
+    {% if pd %}
+    {% set vns.past = vns.past + amt %}
+    {% else %}
+    {% set vns.current = vns.current + amt %}
+    {% endif %}
+    {% endfor %}
+
     <section class="vendor-section">
         <div class="vendor-title">
             <h2>Vendor: {{ vendor }}</h2>
+            <div class="vendor-pill">
+                Vendor total: {{ "%.2f"|format(vns.total) }}
+                | Current: {{ "%.2f"|format(vns.current) }}
+                | Past due: {{ "%.2f"|format(vns.past) }}
+            </div>
         </div>
 
         <h3>Buyer: {{ buyer }}</h3>

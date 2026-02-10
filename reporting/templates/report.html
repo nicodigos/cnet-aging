@@ -33,7 +33,6 @@
             --panel: #f3f4f6;
         }
 
-        /* Make background colors visible in print */
         * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -45,10 +44,8 @@
             color: var(--ink);
             margin: 18px;
             font-weight: 400;
-            /* no bold base */
         }
 
-        /* Report Header */
         .report-header {
             display: flex;
             align-items: baseline;
@@ -64,7 +61,6 @@
             font-size: 20px;
             letter-spacing: 0.3px;
             font-weight: 600;
-            /* lighter than before */
             text-transform: uppercase;
         }
 
@@ -77,7 +73,6 @@
             font-weight: 400;
         }
 
-        /* Sections */
         .vendor-section {
             margin-top: 18px;
             padding-top: 14px;
@@ -96,7 +91,6 @@
             margin: 0;
             font-size: 14px;
             font-weight: 600;
-            /* lighter */
             letter-spacing: 0.2px;
         }
 
@@ -115,7 +109,6 @@
             margin: 12px 0 6px 0;
             font-size: 12px;
             font-weight: 600;
-            /* lighter */
             color: #111827;
             padding: 6px 10px;
             background: #fafafa;
@@ -123,43 +116,38 @@
             border-radius: 8px;
         }
 
-        /* Tables */
+        /* Tables (NO fixed widths) */
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 8px;
-
-            /* Key change: let columns auto-size to content */
             table-layout: auto;
+            /* critical: NOT fixed */
         }
 
         th,
         td {
             border: 1px solid var(--line);
             padding: 6px 7px;
-            text-align: right;
-            vertical-align: top;
 
-            /* Key change: allow wrapping (no ellipsis) */
+            /* center values (per your request) */
+            text-align: center;
+
+            vertical-align: top;
             white-space: normal;
             overflow: visible;
             text-overflow: clip;
             overflow-wrap: anywhere;
             word-break: break-word;
-
             font-weight: 400;
-            /* remove bold */
         }
 
         th {
             background: var(--panel);
-            text-align: center;
             color: #111827;
             cursor: pointer;
             user-select: none;
             position: relative;
-
-            /* not bold */
             font-weight: 500;
         }
 
@@ -174,17 +162,35 @@
             font-weight: 400;
         }
 
-        /* Subtotals / totals (no bold now) */
-        .subtotal td {
-            background: #fbfbfb;
-            font-weight: 400;
+        /* "Tight" cols: no padding; values stay on one line so width becomes "just what it needs" */
+        th.tight,
+        td.tight {
+            padding: 0 !important;
         }
 
-        .vendor-total {
-            margin-top: 8px;
-            text-align: right;
-            font-size: 12px;
-            color: #111827;
+        td.tight {
+            white-space: nowrap;
+        }
+
+        /* Header wrap by words (not breaking inside words) */
+        th.tight {
+            white-space: normal;
+            overflow-wrap: normal;
+            word-break: normal;
+        }
+
+        /* Work Description takes the remaining space (it wraps) */
+        th.workdesc,
+        td.workdesc {
+            text-align: left;
+            /* keep description readable */
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .subtotal td {
+            background: #fbfbfb;
             font-weight: 400;
         }
 
@@ -197,7 +203,6 @@
             font-weight: 400;
         }
 
-        /* Conditional styles */
         td.pastdue-yes {
             background: var(--chip-red-bg);
             color: var(--chip-red-tx);
@@ -215,9 +220,7 @@
         td.heat {
             font-variant-numeric: tabular-nums;
             font-weight: 400;
-            /* no bold */
             color: #111;
-            /* ALWAYS black (per your request) */
         }
 
         .pastdue-filters {
@@ -238,8 +241,6 @@
             background: var(--panel);
         }
 
-
-        /* Print rules: ALWAYS continue; do not force new pages at big-table starts */
         @media print {
             .pastdue-filters {
                 display: none !important;
@@ -249,7 +250,6 @@
                 margin: 10mm;
             }
 
-            /* Key change: DO NOT prevent page breaks inside big tables */
             .vendor-section,
             table,
             tbody,
@@ -260,7 +260,6 @@
                 page-break-inside: auto !important;
             }
 
-            /* Keep header row repeating if a table spans pages */
             thead {
                 display: table-header-group;
             }
@@ -269,7 +268,6 @@
                 display: table-footer-group;
             }
 
-            /* Avoid starting a new page because of headings */
             h2,
             h3,
             table {
@@ -278,13 +276,99 @@
             }
         }
     </style>
+
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            const normKey = (k) => String(k || "").trim().toLowerCase().replace(/\s+/g, "_");
 
-            // 1) Beautify column headers: snake_case -> Title Case
+            function findColIndex(table, wantedKeys) {
+                const ths = Array.from(table.querySelectorAll("thead th"));
+                for (let i = 0; i < ths.length; i++) {
+                    const k = normKey(ths[i].dataset.key || ths[i].getAttribute("data-key") || ths[i].textContent);
+                    if (wantedKeys.includes(k)) return i;
+                }
+                return -1;
+            }
+
+            function parseNumberFromCell(td) {
+                const raw = (td?.getAttribute("data-sort") ?? td?.textContent ?? "").trim();
+                if (!raw) return 0;
+                const cleaned = raw.replace(/[\s,$]/g, "");
+                const n = Number(cleaned);
+                return Number.isFinite(n) ? n : 0;
+            }
+
+            function formatMoney(n) {
+                return Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function formatGenericNumber(num) {
+                const hasDecimals = Math.abs(num % 1) > 0;
+                return num.toLocaleString("en-CA", {
+                    minimumFractionDigits: hasDecimals ? 2 : 0,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            function rebuildSubtotalRow(table) {
+                const ths = Array.from(table.querySelectorAll("thead th"));
+                const colCount = ths.length;
+                if (!colCount) return;
+
+                const amtIdx = findColIndex(table, ["total_amount_with_taxes", "total_amount_with_tax", "total_amount"]);
+                if (amtIdx < 0) return;
+
+                const tfoot = table.querySelector("tfoot");
+                const tr = tfoot?.querySelector("tr.subtotal");
+                if (!tr) return;
+
+                // sum visible rows only
+                let subtotal = 0;
+                table.querySelectorAll("tbody tr").forEach(row => {
+                    if (row.style.display === "none") return;
+                    subtotal += parseNumberFromCell(row.children[amtIdx]);
+                });
+
+                tr.innerHTML = "";
+
+                const tdLabel = document.createElement("td");
+                tdLabel.colSpan = Math.max(1, amtIdx);
+                tdLabel.textContent = "Subtotal";
+                tdLabel.style.textAlign = "right";
+                tr.appendChild(tdLabel);
+
+                const tdAmt = document.createElement("td");
+                tdAmt.setAttribute("data-sort", String(subtotal));
+                tdAmt.textContent = formatMoney(subtotal);
+                tr.appendChild(tdAmt);
+
+                const remaining = colCount - (tdLabel.colSpan + 1);
+                for (let i = 0; i < remaining; i++) tr.appendChild(document.createElement("td"));
+            }
+
+            function applyColumnClasses(table) {
+                const workIdx = findColIndex(table, ["work_description", "workdescription", "description", "work_desc"]);
+                const ths = Array.from(table.querySelectorAll("thead th"));
+
+                ths.forEach((th, idx) => {
+                    th.classList.remove("tight", "workdesc");
+                    if (idx === workIdx && workIdx !== -1) th.classList.add("workdesc");
+                    else th.classList.add("tight");
+                });
+
+                table.querySelectorAll("tbody tr").forEach(tr => {
+                    Array.from(tr.children).forEach((td, idx) => {
+                        td.classList.remove("tight", "workdesc");
+                        if (idx === workIdx && workIdx !== -1) td.classList.add("workdesc");
+                        else td.classList.add("tight");
+                    });
+                });
+            }
+
+            // 1) Beautify column headers: snake_case -> Title Case (keep data-key unchanged)
             document.querySelectorAll("th.sortable").forEach(th => {
-                const raw = (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
-                const pretty = raw
+                const key = th.dataset.key || (th.childNodes[0]?.nodeValue || th.textContent || "").trim();
+                const pretty = String(key)
                     .replace(/_/g, " ")
                     .toLowerCase()
                     .replace(/\b\w/g, c => c.toUpperCase());
@@ -292,9 +376,16 @@
                 else th.textContent = pretty;
             });
 
+            // Apply column classes (NO width fixing, only padding/wrap behavior)
+            document.querySelectorAll("table.sortable-table").forEach(applyColumnClasses);
+
             // 2) Past Due filter buttons (works across all tables)
             const btns = Array.from(document.querySelectorAll(".pastdue-filters button"));
             const tables = Array.from(document.querySelectorAll("table.sortable-table"));
+
+            function updateAllSubtotalsOnly() {
+                tables.forEach(t => rebuildSubtotalRow(t));
+            }
 
             if (btns.length) {
                 function applyFilter(filter) {
@@ -310,6 +401,7 @@
                             if (filter === "false") row.style.display = !isPastDue ? "" : "none";
                         });
                     });
+                    updateAllSubtotalsOnly();
                 }
 
                 btns.forEach(btn => {
@@ -325,54 +417,75 @@
                 );
             }
 
-            // 3) Number formatting in tables (skip Past Due; show Yes / No)
-            document.querySelectorAll("table.sortable-table td").forEach(td => {
+            // 3) Number formatting in tables:
+            // - Past Due => Yes/No
+            // - Invoice ID => NO thousands separators (only there)
+            // - Everything else numeric => en-CA (with grouping)
+            document.querySelectorAll("table.sortable-table").forEach(table => {
+                const invoiceIdx = findColIndex(table, ["invoice_id", "invoiceid"]);
+                const pastDueIdx = findColIndex(table, ["past_due", "pastdue"]);
 
-                // Handle Past Due explicitly
-                if (td.classList.contains("pastdue-yes")) {
-                    td.textContent = "Yes";
-                    return;
-                }
-                if (td.classList.contains("pastdue-no")) {
-                    td.textContent = "No";
-                    return;
-                }
+                table.querySelectorAll("tbody tr").forEach(tr => {
+                    const tds = Array.from(tr.children);
 
-                // Numeric formatting for everything else
-                const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
-                if (!raw) return;
+                    // Past due display
+                    if (pastDueIdx >= 0 && tds[pastDueIdx]) {
+                        const td = tds[pastDueIdx];
+                        if (td.classList.contains("pastdue-yes")) td.textContent = "Yes";
+                        if (td.classList.contains("pastdue-no")) td.textContent = "No";
+                    }
 
-                const cleaned = raw.replace(/[\s,]/g, "");
-                if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+                    tds.forEach((td, idx) => {
+                        if (!td) return;
 
-                const num = Number(cleaned);
-                if (Number.isNaN(num)) return;
+                        if (td.classList.contains("pastdue-yes") || td.classList.contains("pastdue-no")) return;
 
-                const hasDecimals = Math.abs(num % 1) > 0;
+                        const raw = (td.getAttribute("data-sort") ?? td.textContent).trim();
+                        if (!raw) return;
 
-                td.textContent = num.toLocaleString("en-CA", {
-                    minimumFractionDigits: hasDecimals ? 2 : 0,
-                    maximumFractionDigits: 2
+                        // Invoice ID: strip separators, do NOT locale-format
+                        if (idx === invoiceIdx && invoiceIdx >= 0) {
+                            td.textContent = raw.replace(/[\s,]/g, "");
+                            return;
+                        }
+
+                        // Numeric formatting for everything else
+                        const cleaned = raw.replace(/[\s,]/g, "");
+                        if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return;
+
+                        const num = Number(cleaned);
+                        if (!Number.isFinite(num)) return;
+
+                        td.textContent = formatGenericNumber(num);
+                    });
                 });
             });
 
-            // 4) Format Vendor Total and Grand Total (commas too)
-            document.querySelectorAll(".vendor-pill, .grand-total").forEach(el => {
+            // 4) Vendor Total and Grand Total:
+            // - keep thousands separators (restore grouping)
+            // - format ALL numbers found in those elements
+            function formatAllNumbersInElement(el) {
                 const txt = el.textContent;
-                const match = txt.match(/([-+]?\d[\d,]*\.?\d*)/);
-                if (!match) return;
-
-                const num = Number(match[1].replace(/,/g, ""));
-                if (Number.isNaN(num)) return;
-
-                const formatted = num.toLocaleString("en-CA", {
-                    minimumFractionDigits: num % 1 ? 2 : 0,
-                    maximumFractionDigits: 2
+                const replaced = txt.replace(/([-+]?\d[\d,]*\.?\d*)/g, (m) => {
+                    const n = Number(String(m).replace(/,/g, ""));
+                    if (!Number.isFinite(n)) return m;
+                    return n.toLocaleString("en-CA", {
+                        minimumFractionDigits: n % 1 ? 2 : 0,
+                        maximumFractionDigits: 2
+                    });
                 });
+                el.textContent = replaced;
+            }
 
-                el.textContent = txt.replace(match[1], formatted);
+            document.querySelectorAll(".vendor-pill, .grand-total").forEach(formatAllNumbersInElement);
+
+            // Make sure subtotals are positioned under Total Amount With Taxes initially
+            updateAllSubtotalsOnly();
+
+            // Ensure print matches (recompute subtotals based on current filter before print)
+            window.addEventListener("beforeprint", () => {
+                updateAllSubtotalsOnly();
             });
-
         });
     </script>
 
@@ -384,7 +497,6 @@
         <div style="display:flex; align-items:center; gap:14px;">
             <h1>Unpaid Invoices</h1>
 
-            <!-- Filters (screen only) -->
             <div class="pastdue-filters">
                 <button data-filter="all" class="active">All</button>
                 <button data-filter="true">Past Due</button>
@@ -396,13 +508,41 @@
             alt="CNET Building Maintenance Services" style="height:42px; object-fit:contain;" />
     </div>
 
-
+    {# Grand totals split (STATIC; not filtered) #}
+    {% set gns = namespace(total=0, current=0, past=0) %}
 
     {% for v in vendors %}
+    {# Vendor totals split (STATIC; not filtered) #}
+    {% set vns = namespace(total=0, current=0, past=0) %}
+
+    {# Accumulate vendor totals from all rows #}
+    {% for b in v.buyers %}
+    {% for r in b.rows %}
+    {% set pd = (r.get('past_due')|string|lower) in ['true','1','yes','y','past due','overdue'] %}
+    {% set amt = (r.get('total_amount_with_taxes')|float if r.get('total_amount_with_taxes') is not none else 0) %}
+    {% set vns.total = vns.total + amt %}
+    {% if pd %}
+    {% set vns.past = vns.past + amt %}
+    {% else %}
+    {% set vns.current = vns.current + amt %}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+
+    {% set gns.total = gns.total + vns.total %}
+    {% set gns.current = gns.current + vns.current %}
+    {% set gns.past = gns.past + vns.past %}
+
     <section class="vendor-section">
         <div class="vendor-title">
             <h2>Vendor: {{ v.vendor }}</h2>
-            <div class="vendor-pill">Vendor total: {{ "%.2f"|format(v.vendor_total) }}</div>
+
+            <!-- Vendor totals WITH current/past (STATIC; no filtering) -->
+            <div class="vendor-pill">
+                Vendor total: {{ "%.2f"|format(vns.total) }}
+                | Current: {{ "%.2f"|format(vns.current) }}
+                | Past due: {{ "%.2f"|format(vns.past) }}
+            </div>
         </div>
 
         {% for b in v.buyers %}
@@ -439,14 +579,12 @@
                     {% set k = key|string|lower %}
                     {% set vstr = value|string|lower %}
 
-                    {# Past due: red if true, green if false #}
                     {% if k in ['past_due', 'past due'] %}
                     {% set is_true = vstr in ['true','1','yes','y','past due','overdue'] %}
                     <td class="{{ 'pastdue-yes' if is_true else 'pastdue-no' }}" data-sort="{{ 1 if is_true else 0 }}">
                         {{ value }}
                     </td>
 
-                    {# Days since issue: ONLY color if past_due is true #}
                     {% elif k in ['days_since_issue', 'days since issue'] %}
                     {% set past_due_val = row.get('past_due') %}
                     {% set is_past_due = (past_due_val|string|lower) in ['true','1','yes','y','past due','overdue'] %}
@@ -469,7 +607,6 @@
                             <td data-sort="{{ value|float }}">{{ value }}</td>
                             {% endif %}
 
-                            {# Total amount with taxes: green heatmap (always) #}
                             {% elif k in ['total_amount_with_taxes', 'total amount with taxes'] %}
                             {% set denom = (ns.max_amt if ns.max_amt > 0 else 1) %}
                             {% set raw_ratio = (value|float) / denom %}
@@ -498,6 +635,7 @@
             </tbody>
 
             <tfoot>
+                <!-- Will be rebuilt by JS so subtotal lands under Total Amount With Taxes and respects filter -->
                 <tr class="subtotal">
                     <td colspan="{{ b.rows[0]|length - 1 }}">Subtotal</td>
                     <td data-sort="{{ b.subtotal }}">{{ "%.2f"|format(b.subtotal) }}</td>
@@ -505,12 +643,14 @@
             </tfoot>
         </table>
         {% endfor %}
-
     </section>
     {% endfor %}
 
+    <!-- Grand totals WITH current/past (STATIC; no filtering) -->
     <div class="grand-total">
-        Grand total: {{ "%.2f"|format(grand_total) }}
+        Grand total: {{ "%.2f"|format(gns.total) }}
+        | Current: {{ "%.2f"|format(gns.current) }}
+        | Past due: {{ "%.2f"|format(gns.past) }}
     </div>
 
     <script>
@@ -580,6 +720,13 @@
                         });
 
                         rows.forEach(r => tbody.appendChild(r));
+
+                        // Subtotals depend on filter; sort doesn't change visibility,
+                        // but recompute anyway for safety (function lives in head script).
+                        if (typeof window !== "undefined" && window.dispatchEvent) {
+                            // trigger beforeprint-like recompute by calling print handler indirectly is messy;
+                            // the head script already recomputes on filter and beforeprint, and initial load.
+                        }
                     });
                 });
             });

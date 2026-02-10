@@ -64,7 +64,7 @@ def render_filters_sidebar(
     st.session_state.setdefault("issue_to", max_issue)
     st.session_state.setdefault("aging_range", (int(min_aging), int(max_aging)))
     st.session_state.setdefault("invoice_type", "All")
-    st.session_state.setdefault("internal_external", ["Internal", "External"])  # default checked
+    st.session_state.setdefault("internal_external", ["External"])  # default checked
     st.session_state.setdefault("buyer_selected", [])
     st.session_state.setdefault("vendor_selected", [])
 

@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 import altair as alt
-
+import plotly.express as px
 
 def render_past_due_bins(past_due_df: pd.DataFrame):
     st.subheader("Past Due Aging")
@@ -233,3 +233,90 @@ def render_split_100pct_with_pie(
     )
 
     st.altair_chart(bars + labels, use_container_width=True)
+
+
+LIGHT_GREEN = "#C8E6C9"  # Current
+LIGHT_RED = "#FFCDD2"    # Past Due
+
+
+def _metrics_rollup(df_f: pd.DataFrame) -> pd.DataFrame:
+    """
+    Returns a 4-row table:
+      status ∈ {Current, Past Due}
+      invoice_type ∈ {Regular, One Shot}
+      amount = sum(total_amount_with_taxes)
+      count  = number of invoices
+    """
+    needed = {"past_due", "invoice_type", "total_amount_with_taxes"}
+    missing = needed - set(df_f.columns)
+    if missing:
+        raise ValueError(f"Missing columns: {sorted(missing)}")
+
+    tmp = df_f.dropna(subset=["past_due", "invoice_type", "total_amount_with_taxes"]).copy()
+    tmp["status"] = tmp["past_due"].map({True: "Past Due", False: "Current"})
+
+    # keep only the two types you want (optional but helps avoid surprises)
+    tmp = tmp[tmp["invoice_type"].isin(["Regular", "One Shot"])]
+
+    out = (
+        tmp.groupby(["status", "invoice_type"], as_index=False)
+        .agg(
+            amount=("total_amount_with_taxes", "sum"),
+            count=("invoice_type", "size"),
+        )
+    )
+
+    # ensure all 4 combos exist (so treemap doesn't disappear when empty)
+    full = pd.MultiIndex.from_product(
+        [["Current", "Past Due"], ["Regular", "One Shot"]],
+        names=["status", "invoice_type"],
+    ).to_frame(index=False)
+
+    out = full.merge(out, on=["status", "invoice_type"], how="left").fillna({"amount": 0.0, "count": 0})
+    out["count"] = out["count"].astype(int)
+    out["amount"] = out["amount"].astype(float)
+    return out
+
+
+def render_metrics_treemap_value(df_f: pd.DataFrame, height: int = 320):
+    """Treemap by $ value: Current/Past Due -> Regular/One Shot."""
+    g = _metrics_rollup(df_f)
+
+    fig = px.treemap(
+        g,
+        path=["status", "invoice_type"],
+        values="amount",
+        color="status",
+        color_discrete_map={"Current": LIGHT_GREEN, "Past Due": LIGHT_RED},
+    )
+
+    # Show values on the boxes (with decimal point)
+    fig.update_traces(
+        texttemplate="%{value:,.2f}",
+        textposition="middle center",
+    )
+
+    fig.update_layout(margin=dict(l=8, r=8, t=8, b=8), height=height)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_metrics_treemap_count(df_f: pd.DataFrame, height: int = 320):
+    """Treemap by invoice count: Current/Past Due -> Regular/One Shot."""
+    g = _metrics_rollup(df_f)
+
+    fig = px.treemap(
+        g,
+        path=["status", "invoice_type"],
+        values="count",
+        color="status",
+        color_discrete_map={"Current": LIGHT_GREEN, "Past Due": LIGHT_RED},
+    )
+
+    # Show values on the boxes (with decimal point)
+    fig.update_traces(
+        texttemplate="%{value:,.0f}",
+        textposition="middle center",
+    )
+
+    fig.update_layout(margin=dict(l=8, r=8, t=8, b=8), height=height)
+    st.plotly_chart(fig, use_container_width=True)
