@@ -84,7 +84,7 @@ if last_sync:
 else:
     st.info("Last synchronization: No data yet")
 
-if st.button("Export & Upload", type="primary"):
+if st.button("Export & Upload", type="primary", disabled=True):
     try:
         with st.spinner("Exporting and uploading..."):
             df = run_pipeline()
