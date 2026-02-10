@@ -35,20 +35,21 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # -----------------------------
-# Helpers (keep original last-sync behavior)
+# Helpers
 # -----------------------------
-def format_to_local_human(ts: str) -> str:
+def format_utc_to_toronto(ts: str) -> str:
     """
-    Convert UTC timestamptz -> local time
-    Return: January 30, 2026 at 9:52 AM
+    Convert UTC timestamptz (from DB) -> America/Toronto
+    ONLY used for displaying 'Last synchronization'.
     """
     if not ts:
         return None
 
-    local_zone = tz.tzlocal()
+    toronto_zone = tz.gettz("America/Toronto")
     dt_utc = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    dt_local = dt_utc.astimezone(local_zone)
-    return dt_local.strftime("%B %d, %Y at %I:%M %p")
+    dt_toronto = dt_utc.astimezone(toronto_zone)
+
+    return dt_toronto.strftime("%B %d, %Y at %I:%M %p")
 
 
 def get_last_sync_time():
@@ -62,7 +63,8 @@ def get_last_sync_time():
     )
 
     if res.data:
-        return format_to_local_human(res.data[0]["created_at"])
+        # created_at is stored in UTC in the DB
+        return format_utc_to_toronto(res.data[0]["created_at"])
     return None
 
 
@@ -72,7 +74,7 @@ def get_last_sync_time():
 st.title("Update Data")
 
 # =========================================================
-# SECTION A — INVOICES UPDATE (original UX: last sync + button)
+# SECTION A — INVOICES UPDATE (original UX)
 # =========================================================
 st.header("Invoices Update")
 
@@ -98,7 +100,7 @@ if st.button("Export & Upload", type="primary"):
 st.divider()
 
 # =========================================================
-# SECTION B — INVOICE CREATION OVERRIDES (upload + table below)
+# SECTION B — INVOICE CREATION OVERRIDES
 # =========================================================
 st.header("Invoice Creation Overrides")
 
@@ -121,7 +123,6 @@ if uploaded is not None:
         if uploaded.name.lower().endswith(".csv"):
             df_in = pd.read_csv(uploaded)
         else:
-            # first sheet by default
             df_in = pd.read_excel(uploaded, sheet_name=0)
 
         st.subheader("Upload preview")
