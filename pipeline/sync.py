@@ -83,3 +83,68 @@ def run_pipeline():
 
     supabase.table(table).insert(records).execute()
     return df
+
+
+def upload_invoice_creation_overrides(df: pd.DataFrame) -> int:
+    """
+    Expects a DataFrame where:
+      - column 0 = invoice_id (int-like, e.g. 2345)
+      - column 1 = new_creation_date (string or date) in YYYY-MM-DD
+
+    Upserts into Supabase table invoice_creation_override:
+      - update new_creation_date if invoice_id exists
+      - insert row if invoice_id does not exist
+
+    Returns number of rows upserted.
+    """
+    if df is None or df.empty:
+        return 0
+    if df.shape[1] < 2:
+        raise ValueError("DataFrame must have at least 2 columns: [invoice_id, new_creation_date].")
+
+    load_dotenv()
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY")
+
+    # Use only the first 2 columns, order-based
+    work = df.iloc[:, :2].copy()
+
+    # Validate invoice_id: must be integer-like (no decimals, no nulls)
+    ids = pd.to_numeric(work.iloc[:, 0], errors="coerce")
+    if ids.isna().any():
+        bad = work.loc[ids.isna(), work.columns[0]].head(10).tolist()
+        raise ValueError(f"Invalid invoice_id(s) (non-numeric or null). Examples: {bad}")
+    if not (ids % 1 == 0).all():
+        bad = work.loc[(ids % 1 != 0), work.columns[0]].head(10).tolist()
+        raise ValueError(f"invoice_id must be integers. Examples: {bad}")
+    ids = ids.astype("int64")
+
+    # Validate date strictly as YYYY-MM-DD
+    raw_dates = work.iloc[:, 1].astype(str).str.strip()
+    dt = pd.to_datetime(raw_dates, format="%Y-%m-%d", errors="coerce")
+    if dt.isna().any():
+        bad = work.loc[dt.isna(), work.columns[1]].head(10).tolist()
+        raise ValueError(f"Invalid date(s). Must be YYYY-MM-DD. Examples: {bad}")
+
+    # Build records for Supabase
+    payload = pd.DataFrame({
+        "invoice_id": ids,
+        "new_creation_date": dt.dt.strftime("%Y-%m-%d"),
+    })
+
+    # If duplicates exist, keep the last one (latest row wins)
+    payload = payload.drop_duplicates(subset=["invoice_id"], keep="last")
+
+    records = payload.to_dict(orient="records")
+
+    supabase = create_client(url, key)
+
+    # Upsert: update date if exists, insert if not
+    supabase.table("invoice_creation_override").upsert(
+        records,
+        on_conflict="invoice_id"
+    ).execute()
+
+    return len(records)

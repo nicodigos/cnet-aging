@@ -9,3 +9,4 @@ altair
 jinja2
 matplotlib
 lxml
+openpyxl

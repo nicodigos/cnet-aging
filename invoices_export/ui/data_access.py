@@ -46,3 +46,34 @@ def fetch_all_rows(page_size: int = 1000, max_pages: int = 5000) -> pd.DataFrame
         offset += page_size
 
     return pd.DataFrame(all_rows)
+
+
+@st.cache_data(ttl=300)
+def fetch_invoice_creation_overrides(
+    page_size: int = 1000,
+    max_pages: int = 5000,
+) -> pd.DataFrame:
+    all_rows = []
+    offset = 0
+
+    for _ in range(max_pages):
+        res = (
+            supabase.table("invoice_creation_override")
+            .select("invoice_id,new_creation_date")
+            .order("invoice_id", desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+
+        rows = res.data or []
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+
+        if len(rows) < page_size:
+            break
+
+        offset += page_size
+
+    return pd.DataFrame(all_rows)
