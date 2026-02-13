@@ -320,3 +320,125 @@ def render_metrics_treemap_count(df_f: pd.DataFrame, height: int = 320):
 
     fig.update_layout(margin=dict(l=8, r=8, t=8, b=8), height=height)
     st.plotly_chart(fig, use_container_width=True)
+
+def render_invoices_by_days_since_issue_bars(
+    df_f: pd.DataFrame,
+    height: int = 360,
+    invoice_id_col: str = "invoice_id",
+    days_col: str = "days_since_issue",
+    past_due_col: str = "past_due",
+    amount_col: str = "total_amount_with_taxes",
+):
+    """
+    Two bar charts (with a divider between):
+      1) count of invoices by days_since_issue
+      2) sum(total_amount_with_taxes) by days_since_issue
+    Color rule:
+      - green if days_since_issue <= 0
+      - red   if days_since_issue > 0
+    Includes multiselect for Current/Past Due using past_due_col.
+    Uses df_f only.
+    """
+    needed = {invoice_id_col, days_col, past_due_col, amount_col}
+    missing = needed - set(df_f.columns)
+    if missing:
+        st.error(f"Missing columns: {sorted(missing)}")
+        return
+
+    status_sel = st.multiselect(
+        "Status",
+        options=["Current", "Past Due"],
+        default=["Current", "Past Due"],
+        key="days_since_issue_status_sel",
+    )
+
+    tmp = df_f.dropna(subset=[days_col, past_due_col]).copy()
+    if tmp.empty:
+        st.warning("No rows under current filters.")
+        return
+
+    keep = []
+    if "Current" in status_sel:
+        keep.append(False)
+    if "Past Due" in status_sel:
+        keep.append(True)
+    if not keep:
+        return
+
+    tmp = tmp[tmp[past_due_col].isin(keep)]
+    if tmp.empty:
+        st.warning("No rows under current filters.")
+        return
+
+    tmp[days_col] = pd.to_numeric(tmp[days_col], errors="coerce")
+    tmp[amount_col] = pd.to_numeric(tmp[amount_col], errors="coerce")
+    tmp = tmp.dropna(subset=[days_col, amount_col])
+    if tmp.empty:
+        st.warning("No rows under current filters.")
+        return
+
+    tmp[days_col] = tmp[days_col].astype(int)
+
+    counts = (
+        tmp.groupby(days_col, as_index=False)
+           .agg(invoice_count=(invoice_id_col, "count"))
+           .sort_values(days_col)
+    )
+
+    amounts = (
+        tmp.groupby(days_col, as_index=False)
+           .agg(amount=(amount_col, "sum"))
+           .sort_values(days_col)
+    )
+
+    # shared color rule
+    def _flag(x: int) -> str:
+        return "Current (<=0)" if x <= 0 else "Past Due (>0)"
+
+    counts["aging_status"] = counts[days_col].apply(_flag)
+    amounts["aging_status"] = amounts[days_col].apply(_flag)
+
+    color_scale = alt.Scale(
+        domain=["Current (<=0)", "Past Due (>0)"],
+        range=["#2ecc71", "#e74c3c"],
+    )
+
+       # Chart 1: count
+    st.subheader("Invoice Count by Days Since Issue")
+
+    chart_count = (
+        alt.Chart(counts)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{days_col}:O", title="Days Since Issue"),
+            y=alt.Y("invoice_count:Q", title="Number of Invoices"),
+            color=alt.Color("aging_status:N", scale=color_scale, legend=None),
+            tooltip=[
+                alt.Tooltip(f"{days_col}:O", title="Days"),
+                alt.Tooltip("invoice_count:Q", title="Count"),
+            ],
+        )
+        .properties(height=height)
+    )
+    st.altair_chart(chart_count, use_container_width=True)
+
+    st.divider()
+
+    # Chart 2: amount
+    st.subheader("Total Amount by Days Since Issue")
+
+    chart_amount = (
+        alt.Chart(amounts)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{days_col}:O", title="Days Since Issue"),
+            y=alt.Y("amount:Q", title="Total Amount (With Taxes)"),
+            color=alt.Color("aging_status:N", scale=color_scale, legend=None),
+            tooltip=[
+                alt.Tooltip(f"{days_col}:O", title="Days"),
+                alt.Tooltip("amount:Q", title="Amount", format=",.2f"),
+            ],
+        )
+        .properties(height=height)
+    )
+    st.altair_chart(chart_amount, use_container_width=True)

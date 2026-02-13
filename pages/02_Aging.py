@@ -16,7 +16,7 @@ from invoices_export.ui.reports import (
 )
 from invoices_export.ui.metrics import render_metrics
 from invoices_export.ui.charts import (render_past_due_bins, render_split_100pct_with_pie, 
-    render_metrics_treemap_value, render_metrics_treemap_count)
+ render_invoices_by_days_since_issue_bars)
 from invoices_export.ui.table import render_past_due_table
 
 st.set_page_config(page_title="Aging", layout="wide")
@@ -81,8 +81,8 @@ tab_list = ["By Days", "By Vendor", "By Buyer"]
 
 render_metrics(df_f)
 
-tab_list = ["By day", "By vendor", "By buyer", "Treemaps"]
-by_day, by_vendor, by_buyer, by_treemaps = st.tabs(tab_list)
+tab_list = ["By day", "By vendor", "By buyer", "Current"]
+by_day, by_vendor, by_buyer, by_current = st.tabs(tab_list)
 
 with by_day:
     past_due_df = df_f[df_f["past_due"]]
@@ -94,13 +94,9 @@ with by_vendor:
 with by_buyer:
     render_split_100pct_with_pie(df_f, group_by="buyer")
 
-with by_treemaps:
-    st.subheader("Invoices overview")
-    st.caption("By value ($)")
-    render_metrics_treemap_value(df_f)
-    st.divider()
-    st.caption("By invoice count")
-    render_metrics_treemap_count(df_f)
+with by_current:
+    render_invoices_by_days_since_issue_bars(df_f)
+
 
 
 render_past_due_table(df_f)
