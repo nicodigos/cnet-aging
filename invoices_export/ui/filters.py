@@ -62,19 +62,21 @@ def render_filters_sidebar(
     # Stable state keys
     st.session_state.setdefault("issue_from", min_issue)
     st.session_state.setdefault("issue_to", max_issue)
-    st.session_state.setdefault("aging_range", (int(min_aging), int(max_aging)))
+
+    # Keyboard-entered aging bounds
+    st.session_state.setdefault("aging_min", int(min_aging))
+    st.session_state.setdefault("aging_max", int(max_aging))
+
     st.session_state.setdefault("invoice_type", "All")
     st.session_state.setdefault("internal_external", ["External"])  # default checked
     st.session_state.setdefault("buyer_selected", [])
     st.session_state.setdefault("vendor_selected", [])
 
-    # Clamp aging_range in case min/max bounds changed between reruns
-    lo, hi = st.session_state["aging_range"]
-    lo = max(int(min_aging), int(lo))
-    hi = min(int(max_aging), int(hi))
-    if lo > hi:
-        lo, hi = int(min_aging), int(max_aging)
-    st.session_state["aging_range"] = (lo, hi)
+    # Clamp aging bounds in case min/max bounds changed between reruns
+    st.session_state["aging_min"] = max(int(min_aging), int(st.session_state["aging_min"]))
+    st.session_state["aging_max"] = min(int(max_aging), int(st.session_state["aging_max"]))
+    if st.session_state["aging_min"] > st.session_state["aging_max"]:
+        st.session_state["aging_min"], st.session_state["aging_max"] = int(min_aging), int(max_aging)
 
     # Universe of vendor company numbers from FULL df (unfiltered)
     vendor_numbers_all = _build_vendor_numbers_universe(df)
@@ -93,13 +95,31 @@ def render_filters_sidebar(
             st.session_state["issue_from"] = issue_from
             st.session_state["issue_to"] = issue_to
 
-        aging_min_val, aging_max_val = st.slider(
-            "Aging (days_since_issue)",
-            min_value=int(min_aging),
-            max_value=int(max_aging),
-            step=1,
-            key="aging_range",
-        )
+        st.caption("Aging (days_since_issue)")
+
+        cmin, cmax = st.columns(2)
+        with cmin:
+            aging_min_val = st.number_input(
+                "Min days",
+                min_value=int(min_aging),
+                max_value=int(max_aging),
+                step=1,
+                key="aging_min",
+            )
+        with cmax:
+            aging_max_val = st.number_input(
+                "Max days",
+                min_value=int(min_aging),
+                max_value=int(max_aging),
+                step=1,
+                key="aging_max",
+            )
+
+        # Ensure min <= max
+        if int(aging_min_val) > int(aging_max_val):
+            aging_min_val, aging_max_val = int(aging_max_val), int(aging_min_val)
+            st.session_state["aging_min"] = int(aging_min_val)
+            st.session_state["aging_max"] = int(aging_max_val)
 
         invoice_type = st.selectbox(
             "Invoice Type",

@@ -81,12 +81,13 @@ tab_list = ["By Days", "By Vendor", "By Buyer"]
 
 render_metrics(df_f)
 
-tab_list = ["By day", "By vendor", "By buyer", "Current"]
-by_day, by_vendor, by_buyer, by_current = st.tabs(tab_list)
+tab_list = ["By day", "By vendor", "By buyer",]
+by_day, by_vendor, by_buyer,  = st.tabs(tab_list)
 
 with by_day:
-    past_due_df = df_f[df_f["past_due"]]
-    render_past_due_bins(past_due_df)
+    # past_due_df = df_f[df_f["past_due"]]
+    # render_past_due_bins(past_due_df)
+    render_invoices_by_days_since_issue_bars(df_f)
 
 with by_vendor:
     render_split_100pct_with_pie(df_f, group_by="vendor")
@@ -94,8 +95,8 @@ with by_vendor:
 with by_buyer:
     render_split_100pct_with_pie(df_f, group_by="buyer")
 
-with by_current:
-    render_invoices_by_days_since_issue_bars(df_f)
+
+    
 
 
 
