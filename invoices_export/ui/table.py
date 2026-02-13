@@ -40,7 +40,19 @@ def render_past_due_table(table_df: pd.DataFrame):
         style = style.applymap(color_past_due, subset=["past_due"])
 
     if "days_since_issue" in table_df.columns:
-        style = style.background_gradient(subset=["days_since_issue"], cmap="Reds")
+        col = "days_since_issue"
+        s = pd.to_numeric(table_df[col], errors="coerce")
+
+        if s.notna().any():
+            max_abs = max(abs(s.min()), abs(s.max()))
+
+            style = style.background_gradient(
+                subset=[col],
+                cmap="RdBu_r",   # Blue (neg) → White (0) → Red (pos)
+                vmin=-max_abs,
+                vmax=max_abs,
+            )
+
 
     if "total_amount_with_taxes" in table_df.columns:
         style = style.background_gradient(subset=["total_amount_with_taxes"], cmap="Greens")
