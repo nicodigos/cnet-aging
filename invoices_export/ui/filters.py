@@ -59,6 +59,7 @@ def render_filters_sidebar(
     min_aging: int,
     max_aging: int,
 ):
+
     # Stable state keys
     st.session_state.setdefault("issue_from", min_issue)
     st.session_state.setdefault("issue_to", max_issue)
@@ -69,8 +70,30 @@ def render_filters_sidebar(
 
     st.session_state.setdefault("invoice_type", "All")
     st.session_state.setdefault("internal_external", ["External"])  # default checked
-    st.session_state.setdefault("buyer_selected", [])
-    st.session_state.setdefault("vendor_selected", [])
+    # Build defaults from df
+    vendor_defaults = (
+        df.loc[
+            df["vendor_company_name"].str.contains(r"12433087", case=False, na=False),
+            "vendor_company_name"
+        ]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    buyer_defaults = (
+        df.loc[
+            df["buyer_company_name"].str.contains(r"allen maintenance|controlnet", case=False, na=False),
+            "buyer_company_name"
+        ]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    # Set defaults (only first run; won't overwrite user changes)
+    st.session_state.setdefault("vendor_selected", vendor_defaults)
+    st.session_state.setdefault("buyer_selected", buyer_defaults)
 
     # Clamp aging bounds in case min/max bounds changed between reruns
     st.session_state["aging_min"] = max(int(min_aging), int(st.session_state["aging_min"]))

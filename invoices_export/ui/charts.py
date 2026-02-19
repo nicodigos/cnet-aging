@@ -403,7 +403,28 @@ def render_invoices_by_days_since_issue_bars(
         range=["#2ecc71", "#e74c3c"],
     )
 
-       # Chart 1: count
+        # Chart 2: amount
+    st.subheader("Total Amount by Days Since Issue")
+
+    chart_amount = (
+        alt.Chart(amounts)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{days_col}:O", title="Days Since Issue"),
+            y=alt.Y("amount:Q", title="Total Amount (With Taxes)"),
+            color=alt.Color("aging_status:N", scale=color_scale, legend=None),
+            tooltip=[
+                alt.Tooltip(f"{days_col}:O", title="Days"),
+                alt.Tooltip("amount:Q", title="Amount", format=",.2f"),
+            ],
+        )
+        .properties(height=height)
+    )
+    st.altair_chart(chart_amount, use_container_width=True)
+
+    st.divider()
+
+    # Chart 1: count
     st.subheader("Invoice Count by Days Since Issue")
 
     chart_count = (
@@ -422,23 +443,4 @@ def render_invoices_by_days_since_issue_bars(
     )
     st.altair_chart(chart_count, use_container_width=True)
 
-    st.divider()
-
-    # Chart 2: amount
-    st.subheader("Total Amount by Days Since Issue")
-
-    chart_amount = (
-        alt.Chart(amounts)
-        .mark_bar()
-        .encode(
-            x=alt.X(f"{days_col}:O", title="Days Since Issue"),
-            y=alt.Y("amount:Q", title="Total Amount (With Taxes)"),
-            color=alt.Color("aging_status:N", scale=color_scale, legend=None),
-            tooltip=[
-                alt.Tooltip(f"{days_col}:O", title="Days"),
-                alt.Tooltip("amount:Q", title="Amount", format=",.2f"),
-            ],
-        )
-        .properties(height=height)
-    )
-    st.altair_chart(chart_amount, use_container_width=True)
+   
