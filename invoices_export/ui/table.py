@@ -19,7 +19,7 @@ def render_past_due_table(table_df: pd.DataFrame):
         "work_description",
     ]
     cols = [c for c in cols if c in table_df.columns]
-    table_df = table_df[cols]
+    table_df = table_df[cols].copy()
 
     if "past_due" in table_df.columns:
         table_df["past_due"] = table_df["past_due"].map(
@@ -36,8 +36,14 @@ def render_past_due_table(table_df: pd.DataFrame):
 
     style = table_df.style
 
+    def apply_cell_style(styler, func, subset):
+        # pandas newer versions use Styler.map; older ones still expose applymap.
+        if hasattr(styler, "map"):
+            return styler.map(func, subset=subset)
+        return styler.applymap(func, subset=subset)
+
     if "past_due" in table_df.columns:
-        style = style.applymap(color_past_due, subset=["past_due"])
+        style = apply_cell_style(style, color_past_due, subset=["past_due"])
 
     if "days_since_issue" in table_df.columns:
         col = "days_since_issue"
