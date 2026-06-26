@@ -20,6 +20,20 @@ def init_reports_state():
     st.session_state.setdefault("reports_zip_name", "reports_by_vendor_buyer.zip")
 
 
+def _prepare_report_amount_columns(df):
+    df_report = df.copy()
+
+    if "partial_payments_amount" in df_report.columns:
+        df_report["partially_paid"] = df_report["partial_payments_amount"].fillna(0)
+
+    if "open_amount_with_taxes" in df_report.columns:
+        df_report["total_amount_with_taxes"] = (
+            df_report["open_amount_with_taxes"].fillna(df_report["total_amount_with_taxes"])
+        )
+
+    return df_report
+
+
 def _zip_folder_bytes(root_dir: Path) -> bytes:
     """
     Zip an on-disk folder into bytes. Paths inside zip are relative to root_dir.
@@ -39,13 +53,12 @@ def generate_full_html_report_to_session(df_f, report_generator: ClientReportGen
         "creation_date",
         "payment_status",
         "payment_status_norm",
+        "open_amount_with_taxes",
+        "partial_payments_amount",
+        "partial_payments_count",
     ]
 
-    df_report = df_f.copy()
-    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in df_report.columns else "total_amount_with_taxes"
-    if amount_col != "total_amount_with_taxes":
-        df_report["invoice_total_amount_with_taxes"] = df_report["total_amount_with_taxes"]
-        df_report["total_amount_with_taxes"] = df_report[amount_col]
+    df_report = _prepare_report_amount_columns(df_f)
 
     with st.spinner("Generating HTML report..."):
         html_path = report_generator.generate_html(
@@ -70,13 +83,12 @@ def generate_partitioned_reports_zip_to_session(df_f, report_generator: ClientRe
         "creation_date",
         "payment_status",
         "payment_status_norm",
+        "open_amount_with_taxes",
+        "partial_payments_amount",
+        "partial_payments_count",
     ]
 
-    df_report = df_f.copy()
-    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in df_report.columns else "total_amount_with_taxes"
-    if amount_col != "total_amount_with_taxes":
-        df_report["invoice_total_amount_with_taxes"] = df_report["total_amount_with_taxes"]
-        df_report["total_amount_with_taxes"] = df_report[amount_col]
+    df_report = _prepare_report_amount_columns(df_f)
 
     with st.spinner("Generating partitioned reports ZIP..."):
         root_dir = report_generator.generate_html_partitioned(

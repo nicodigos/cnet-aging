@@ -571,7 +571,7 @@
                             <td data-sort="{{ value|float }}">{{ value }}</td>
                             {% endif %}
 
-                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes'] %}
+                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes', 'partially_paid', 'partially paid'] %}
                             {% set denom = (ns.max_amt if ns.max_amt > 0 else 1) %}
                             {% set raw_ratio = (value|float) / denom %}
                             {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set
@@ -699,7 +699,7 @@
                             <td data-sort="{{ value|float }}">{{ value }}</td>
                             {% endif %}
 
-                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes'] %}
+                            {% elif k in ['total_amount_with_taxes', 'total amount with taxes', 'partially_paid', 'partially paid'] %}
                             {% set denom = (ns.max_amt if ns.max_amt > 0 else 1) %}
                             {% set raw_ratio = (value|float) / denom %}
                             {% if raw_ratio < 0 %}{% set raw_ratio=0 %}{% endif %} {% if raw_ratio> 1 %}{% set

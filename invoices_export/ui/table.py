@@ -6,6 +6,14 @@ def render_past_due_table(table_df: pd.DataFrame):
     st.divider()
     st.subheader("Unpaid Table")
 
+    table_df = table_df.copy()
+    if "partial_payments_amount" in table_df.columns:
+        table_df["partially_paid"] = table_df["partial_payments_amount"].fillna(0)
+    if "open_amount_with_taxes" in table_df.columns:
+        table_df["total_amount_with_taxes"] = (
+            table_df["open_amount_with_taxes"].fillna(table_df["total_amount_with_taxes"])
+        )
+
     cols = [
         "invoice_id",
         "issue_date",
@@ -15,14 +23,12 @@ def render_past_due_table(table_df: pd.DataFrame):
         "vendor_company_name",
         "payment_status",
         "days_since_issue",
-        "open_amount_with_taxes",
-        "partial_payments_amount",
-        "partial_payments_count",
         "total_amount_with_taxes",
+        "partially_paid",
         "work_description",
     ]
     cols = [c for c in cols if c in table_df.columns]
-    table_df = table_df[cols].copy()
+    table_df = table_df[cols]
 
     if "past_due" in table_df.columns:
         table_df["past_due"] = table_df["past_due"].map(
@@ -38,6 +44,9 @@ def render_past_due_table(table_df: pd.DataFrame):
             return "background-color: #2e7d32; color: white;"
 
     style = table_df.style
+    money_cols = [c for c in ["total_amount_with_taxes", "partially_paid"] if c in table_df.columns]
+    if money_cols:
+        style = style.format({c: "{:,.2f}" for c in money_cols})
 
     def apply_cell_style(styler, func, subset):
         # pandas newer versions use Styler.map; older ones still expose applymap.
@@ -63,8 +72,7 @@ def render_past_due_table(table_df: pd.DataFrame):
             )
 
 
-    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in table_df.columns else "total_amount_with_taxes"
-    if amount_col in table_df.columns:
-        style = style.background_gradient(subset=[amount_col], cmap="Greens")
+    if "total_amount_with_taxes" in table_df.columns:
+        style = style.background_gradient(subset=["total_amount_with_taxes"], cmap="Greens")
 
     st.dataframe(style, use_container_width=True, height=650, hide_index=True)
