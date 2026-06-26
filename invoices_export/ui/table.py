@@ -15,6 +15,9 @@ def render_past_due_table(table_df: pd.DataFrame):
         "vendor_company_name",
         "payment_status",
         "days_since_issue",
+        "open_amount_with_taxes",
+        "partial_payments_amount",
+        "partial_payments_count",
         "total_amount_with_taxes",
         "work_description",
     ]
@@ -60,7 +63,8 @@ def render_past_due_table(table_df: pd.DataFrame):
             )
 
 
-    if "total_amount_with_taxes" in table_df.columns:
-        style = style.background_gradient(subset=["total_amount_with_taxes"], cmap="Greens")
+    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in table_df.columns else "total_amount_with_taxes"
+    if amount_col in table_df.columns:
+        style = style.background_gradient(subset=[amount_col], cmap="Greens")
 
     st.dataframe(style, use_container_width=True, height=650, hide_index=True)

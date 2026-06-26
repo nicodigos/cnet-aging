@@ -6,6 +6,7 @@ from supabase import create_client
 import numpy as np
 
 from invoices_export import get_csv_bytes
+from invoices_export.exporter import get_payment_summaries
 
 COLUMN_MAP = {
     "Invoice ID": "invoice_id",
@@ -53,6 +54,36 @@ COLUMN_MAP = {
     "GST YT": "gst_yt",
 }
 
+REQUIRED_ENRICHMENT_COLUMNS = {
+    "partial_payments_amount",
+    "partial_payments_count",
+    "open_amount_with_taxes",
+}
+
+SCHEMA_SQL = """
+alter table public.invoices_raw
+  add column if not exists partial_payments_amount numeric,
+  add column if not exists partial_payments_count integer,
+  add column if not exists open_amount_with_taxes numeric;
+""".strip()
+
+
+def _ensure_enrichment_columns(supabase, table: str) -> None:
+    try:
+        (
+            supabase.table(table)
+            .select(",".join(sorted(REQUIRED_ENRICHMENT_COLUMNS)))
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Supabase is missing the partial-payment enrichment columns. "
+            "Apply this SQL before running the sync:\n\n"
+            f"{SCHEMA_SQL}"
+        ) from exc
+
+
 def run_pipeline():
     load_dotenv()
 
@@ -62,10 +93,32 @@ def run_pipeline():
     if not url or not key or not table:
         raise RuntimeError("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_TABLE")
 
+    supabase = create_client(url, key)
+    _ensure_enrichment_columns(supabase, table)
+
     csv_bytes = get_csv_bytes()
     df = pd.read_csv(io.BytesIO(csv_bytes), engine="python")
 
     df = df.rename(columns=COLUMN_MAP)
+
+    status = df.get("payment_status", pd.Series(dtype=str)).fillna("").astype(str).str.strip().str.lower()
+    partial_mask = status.eq("partially paid")
+    partial_invoice_ids = df.loc[partial_mask, "invoice_id"].astype(str).str.strip().tolist()
+
+    df["partial_payments_amount"] = 0.0
+    df["partial_payments_count"] = 0
+
+    if partial_invoice_ids:
+        payment_summaries = get_payment_summaries(partial_invoice_ids)
+        for idx, invoice_id in df.loc[partial_mask, "invoice_id"].astype(str).str.strip().items():
+            summary = payment_summaries.get(invoice_id, {})
+            df.at[idx, "partial_payments_amount"] = summary.get("partial_payments_amount", 0.0)
+            df.at[idx, "partial_payments_count"] = summary.get("partial_payments_count", 0)
+
+    total_with_taxes = pd.to_numeric(df.get("total_amount_with_taxes"), errors="coerce").fillna(0)
+    partial_amount = pd.to_numeric(df["partial_payments_amount"], errors="coerce").fillna(0)
+    df["open_amount_with_taxes"] = total_with_taxes
+    df.loc[partial_mask, "open_amount_with_taxes"] = total_with_taxes.loc[partial_mask] - partial_amount.loc[partial_mask]
 
     # Parse the date, then convert to JSON-safe string
     dt = pd.to_datetime(df["creation_date"], format="%m/%d/%Y %H:%M", errors="coerce")
@@ -75,8 +128,6 @@ def run_pipeline():
     records = df.to_dict(orient="records")
     # JSON-safe None handling
     records = df.where(pd.notnull(df), None).to_dict(orient="records")
-
-    supabase = create_client(url, key)
 
     # Truncate via RPC
     supabase.rpc("truncate_table", {"tbl": table}).execute()

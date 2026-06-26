@@ -7,6 +7,7 @@ import streamlit as st
 load_dotenv()
 
 VIEW_NAME = os.getenv("SUPABASE_INVOICES_VIEW", "invoices_v")
+RAW_TABLE = os.getenv("SUPABASE_TABLE", "invoices_raw")
 URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -45,7 +46,44 @@ def fetch_all_rows(page_size: int = 1000, max_pages: int = 5000) -> pd.DataFrame
 
         offset += page_size
 
-    return pd.DataFrame(all_rows)
+    df = pd.DataFrame(all_rows)
+    if df.empty:
+        return df
+
+    try:
+        enrichment_rows = []
+        offset = 0
+        for _ in range(max_pages):
+            res = (
+                supabase.table(RAW_TABLE)
+                .select(
+                    "invoice_id,partial_payments_amount,"
+                    "partial_payments_count,open_amount_with_taxes"
+                )
+                .order("invoice_id", desc=False)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+
+            rows = res.data or []
+            if not rows:
+                break
+
+            enrichment_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+
+            offset += page_size
+
+        enrich = pd.DataFrame(enrichment_rows)
+        if not enrich.empty:
+            df = df.merge(enrich, on="invoice_id", how="left")
+    except Exception:
+        df["partial_payments_amount"] = 0
+        df["partial_payments_count"] = 0
+        df["open_amount_with_taxes"] = df["total_amount_with_taxes"]
+
+    return df
 
 
 @st.cache_data(ttl=300)

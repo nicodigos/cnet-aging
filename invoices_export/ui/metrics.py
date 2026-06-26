@@ -5,9 +5,10 @@ import streamlit as st
 def render_metrics(df_f: pd.DataFrame):
     current_df = df_f[~df_f["past_due"]]
     past_due_df = df_f[df_f["past_due"]]
+    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in df_f.columns else "total_amount_with_taxes"
 
     def sum_amt(x: pd.DataFrame) -> float:
-        return float(x["total_amount_with_taxes"].sum()) if not x.empty else 0.0
+        return float(x[amount_col].sum()) if not x.empty else 0.0
 
     def cnt(x: pd.DataFrame) -> int:
         return int(len(x)) if not x.empty else 0

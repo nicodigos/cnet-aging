@@ -3,6 +3,10 @@ import streamlit as st
 import altair as alt
 import plotly.express as px
 
+
+def _amount_col(df: pd.DataFrame) -> str:
+    return "open_amount_with_taxes" if "open_amount_with_taxes" in df.columns else "total_amount_with_taxes"
+
 def render_past_due_bins(past_due_df: pd.DataFrame):
     st.subheader("Past Due Aging")
 
@@ -37,8 +41,9 @@ def render_past_due_bins(past_due_df: pd.DataFrame):
         .sort_values("bin_start")
     )
 
+    amount_col = _amount_col(tmp)
     amt_by = (
-        tmp.groupby(["aging_bin", "bin_start"])["total_amount_with_taxes"]
+        tmp.groupby(["aging_bin", "bin_start"])[amount_col]
         .sum()
         .reset_index(name="amount")
         .sort_values("bin_start")
@@ -92,7 +97,7 @@ def render_split_100pct_with_pie(
     vendor_col: str = "vendor_company_name",
     buyer_col: str = "buyer_company_name",
     past_due_col: str = "past_due",
-    amount_col: str = "total_amount_with_taxes",
+    amount_col: str | None = None,
 ):
     """
     Top: Vertical bars of total unpaid amount by group (thicker bars).
@@ -105,6 +110,8 @@ def render_split_100pct_with_pie(
     if df.empty:
         st.warning("No rows under current filters.")
         return
+
+    amount_col = amount_col or _amount_col(df)
 
     group_by = group_by.lower()
     if group_by not in {"vendor", "buyer"}:
@@ -244,15 +251,16 @@ def _metrics_rollup(df_f: pd.DataFrame) -> pd.DataFrame:
     Returns a 4-row table:
       status ∈ {Current, Past Due}
       invoice_type ∈ {Regular, One Shot}
-      amount = sum(total_amount_with_taxes)
+      amount = sum(open_amount_with_taxes when available, otherwise total_amount_with_taxes)
       count  = number of invoices
     """
-    needed = {"past_due", "invoice_type", "total_amount_with_taxes"}
+    amount_col = _amount_col(df_f)
+    needed = {"past_due", "invoice_type", amount_col}
     missing = needed - set(df_f.columns)
     if missing:
         raise ValueError(f"Missing columns: {sorted(missing)}")
 
-    tmp = df_f.dropna(subset=["past_due", "invoice_type", "total_amount_with_taxes"]).copy()
+    tmp = df_f.dropna(subset=["past_due", "invoice_type", amount_col]).copy()
     tmp["status"] = tmp["past_due"].map({True: "Past Due", False: "Current"})
 
     # keep only the two types you want (optional but helps avoid surprises)
@@ -261,7 +269,7 @@ def _metrics_rollup(df_f: pd.DataFrame) -> pd.DataFrame:
     out = (
         tmp.groupby(["status", "invoice_type"], as_index=False)
         .agg(
-            amount=("total_amount_with_taxes", "sum"),
+            amount=(amount_col, "sum"),
             count=("invoice_type", "size"),
         )
     )
@@ -327,18 +335,19 @@ def render_invoices_by_days_since_issue_bars(
     invoice_id_col: str = "invoice_id",
     days_col: str = "days_since_issue",
     past_due_col: str = "past_due",
-    amount_col: str = "total_amount_with_taxes",
+    amount_col: str | None = None,
 ):
     """
     Two bar charts (with a divider between):
       1) count of invoices by days_since_issue
-      2) sum(total_amount_with_taxes) by days_since_issue
+      2) sum(open_amount_with_taxes when available, otherwise total_amount_with_taxes) by days_since_issue
     Color rule:
       - green if days_since_issue <= 0
       - red   if days_since_issue > 0
     Includes multiselect for Current/Past Due using past_due_col.
     Uses df_f only.
     """
+    amount_col = amount_col or _amount_col(df_f)
     needed = {invoice_id_col, days_col, past_due_col, amount_col}
     missing = needed - set(df_f.columns)
     if missing:

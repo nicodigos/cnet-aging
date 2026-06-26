@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import asyncio
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urljoin
 
 import requests
@@ -56,7 +57,7 @@ def _pick_export_url(html: str, base_url: str) -> str:
     )
 
 
-def _login_and_download_csv_bytes() -> bytes:
+def _authenticated_session() -> requests.Session:
     load_dotenv()
 
     user = os.getenv("CNET_USER")
@@ -106,6 +107,12 @@ def _login_and_download_csv_bytes() -> bytes:
     if "/login" in r2.url:
         raise RuntimeError("Login appears to have failed (redirected back to /login).")
 
+    return s
+
+
+def _login_and_download_csv_bytes() -> bytes:
+    s = _authenticated_session()
+
     # 3) Load invoices page
     r3 = s.get(INVOICES_URL, timeout=60)
     r3.raise_for_status()
@@ -118,6 +125,70 @@ def _login_and_download_csv_bytes() -> bytes:
     dl.raise_for_status()
 
     return dl.content
+
+
+def _parse_money(value: str) -> Decimal:
+    cleaned = (value or "").strip().replace(",", "").replace("$", "")
+    cleaned = re.sub(r"^\((.*)\)$", r"-\1", cleaned)
+    try:
+        return Decimal(cleaned)
+    except InvalidOperation:
+        return Decimal("0")
+
+
+def _extract_payment_summary(html: str) -> dict[str, float | int]:
+    soup = BeautifulSoup(html, "html.parser")
+
+    for table in soup.select("table"):
+        headers = [th.get_text(" ", strip=True).lower() for th in table.select("thead th")]
+        if "payment date" not in headers or "amount" not in headers:
+            continue
+
+        amount_idx = headers.index("amount")
+        total = Decimal("0")
+        count = 0
+
+        for row in table.select("tbody tr"):
+            cells = row.find_all("td")
+            if amount_idx >= len(cells):
+                continue
+
+            amount_text = cells[amount_idx].get_text(" ", strip=True)
+            if not amount_text:
+                continue
+
+            total += _parse_money(amount_text)
+            count += 1
+
+        return {
+            "partial_payments_amount": float(total),
+            "partial_payments_count": count,
+        }
+
+    return {
+        "partial_payments_amount": 0.0,
+        "partial_payments_count": 0,
+    }
+
+
+def get_payment_summaries(invoice_ids: list[str]) -> dict[str, dict[str, float | int]]:
+    if not invoice_ids:
+        return {}
+
+    s = _authenticated_session()
+    out = {}
+
+    for invoice_id in invoice_ids:
+        inv = str(invoice_id).strip()
+        if not inv:
+            continue
+
+        show_url = f"{BASE_URL}/manager/invoices/{inv}/show"
+        r = s.get(show_url, timeout=60)
+        r.raise_for_status()
+        out[inv] = _extract_payment_summary(r.text)
+
+    return out
 
 
 # Keep the same external function signature

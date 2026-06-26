@@ -42,6 +42,10 @@ def generate_full_html_report_to_session(df_f, report_generator: ClientReportGen
     ]
 
     df_report = df_f.copy()
+    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in df_report.columns else "total_amount_with_taxes"
+    if amount_col != "total_amount_with_taxes":
+        df_report["invoice_total_amount_with_taxes"] = df_report["total_amount_with_taxes"]
+        df_report["total_amount_with_taxes"] = df_report[amount_col]
 
     with st.spinner("Generating HTML report..."):
         html_path = report_generator.generate_html(
@@ -69,6 +73,10 @@ def generate_partitioned_reports_zip_to_session(df_f, report_generator: ClientRe
     ]
 
     df_report = df_f.copy()
+    amount_col = "open_amount_with_taxes" if "open_amount_with_taxes" in df_report.columns else "total_amount_with_taxes"
+    if amount_col != "total_amount_with_taxes":
+        df_report["invoice_total_amount_with_taxes"] = df_report["total_amount_with_taxes"]
+        df_report["total_amount_with_taxes"] = df_report[amount_col]
 
     with st.spinner("Generating partitioned reports ZIP..."):
         root_dir = report_generator.generate_html_partitioned(

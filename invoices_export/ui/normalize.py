@@ -10,6 +10,16 @@ def normalize_invoices(df: pd.DataFrame) -> pd.DataFrame:
     df["total_amount_with_taxes"] = (
         pd.to_numeric(df.get("total_amount_with_taxes"), errors="coerce").fillna(0)
     )
+    df["partial_payments_amount"] = (
+        pd.to_numeric(df.get("partial_payments_amount", 0), errors="coerce").fillna(0)
+    )
+    df["partial_payments_count"] = (
+        pd.to_numeric(df.get("partial_payments_count", 0), errors="coerce").fillna(0).astype(int)
+    )
+    df["open_amount_with_taxes"] = (
+        pd.to_numeric(df.get("open_amount_with_taxes"), errors="coerce")
+        .fillna(df["total_amount_with_taxes"])
+    )
 
     past_due_raw = df.get("past_due")
     if past_due_raw is None:
