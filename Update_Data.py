@@ -13,25 +13,15 @@ if sys.platform.startswith("win"):
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
-from supabase import create_client
 
 from pipeline.sync import run_pipeline, upload_invoice_creation_overrides
+from pipeline.database import connect
 from invoices_export.ui.data_access import fetch_invoice_creation_overrides
+from invoices_export.ui.auth import require_authentication
 
 
-# -----------------------------
-# Supabase connection (for last-sync info)
-# -----------------------------
 load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # must be service role
-SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "invoices_raw")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+require_authentication()
 
 
 # -----------------------------
@@ -53,18 +43,12 @@ def format_utc_to_toronto(ts: str) -> str:
 
 
 def get_last_sync_time():
-    res = (
-        supabase
-        .table(SUPABASE_TABLE)
-        .select("created_at")
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    if res.data:
-        # created_at is stored in UTC in the DB
-        return format_utc_to_toronto(res.data[0]["created_at"])
+    with connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("select max(created_at) from public.invoices_raw")
+            value = cursor.fetchone()[0]
+    if value:
+        return format_utc_to_toronto(value.isoformat())
     return None
 
 

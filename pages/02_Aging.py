@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import streamlit as st
+from invoices_export.ui.auth import require_authentication
 
 from downloads.cnet_invoice_zip import build_past_due_invoices_zip_by_vendor_buyer
 from reporting.report import ClientReportGenerator
@@ -20,6 +21,7 @@ from invoices_export.ui.charts import (render_past_due_bins, render_split_100pct
 from invoices_export.ui.table import render_past_due_table
 
 st.set_page_config(page_title="Aging", layout="wide")
+require_authentication()
 st.title("Aging")
 
 # Report generator (HTML)
