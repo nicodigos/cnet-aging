@@ -3,16 +3,23 @@ from __future__ import annotations
 import os
 import re
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, InvalidOperation
+from typing import Callable
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_URL = "https://app.master.cnetfranchise.com"
 LOGIN_URL = f"{BASE_URL}/login"
 INVOICES_URL = f"{BASE_URL}/manager/invoices"
+FEES_EXPORT_URL = f"{BASE_URL}/manager/invoices/export/fees"
+PO_REQUEST_WORKERS = 8
 
 
 def _pick_export_url(html: str, base_url: str) -> str:
@@ -127,6 +134,23 @@ def _login_and_download_csv_bytes() -> bytes:
     return dl.content
 
 
+def _login_and_download_csv_exports_bytes() -> tuple[bytes, bytes]:
+    """Download the standard and fee exports using the same authenticated session."""
+    s = _authenticated_session()
+
+    invoices_page = s.get(INVOICES_URL, timeout=60)
+    invoices_page.raise_for_status()
+    export_url = _pick_export_url(invoices_page.text, BASE_URL)
+
+    invoices_response = s.get(export_url, timeout=120)
+    invoices_response.raise_for_status()
+
+    fees_response = s.get(FEES_EXPORT_URL, timeout=120)
+    fees_response.raise_for_status()
+
+    return invoices_response.content, fees_response.content
+
+
 def _parse_money(value: str) -> Decimal:
     cleaned = (value or "").strip().replace(",", "").replace("$", "")
     cleaned = re.sub(r"^\((.*)\)$", r"-\1", cleaned)
@@ -191,12 +215,104 @@ def get_payment_summaries(invoice_ids: list[str]) -> dict[str, dict[str, float |
     return out
 
 
+def _extract_po_number(html: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
+    for paragraph in soup.find_all("p"):
+        text = paragraph.get_text(" ", strip=True)
+        if not re.match(r"^PO\s+Number\s*:", text, flags=re.I):
+            continue
+
+        strong = paragraph.find("strong")
+        value = strong.get_text(" ", strip=True) if strong else text.split(":", 1)[1].strip()
+        return value or None
+    return None
+
+
+def get_purchase_order_numbers(
+    invoice_ids: list[str],
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[dict[str, str | None]]:
+    """Fetch PO numbers for invoice IDs while reusing one authenticated login."""
+    normalized_ids = [str(invoice_id).strip() for invoice_id in invoice_ids]
+    normalized_ids = [invoice_id for invoice_id in normalized_ids if invoice_id]
+    if not normalized_ids:
+        return []
+
+    authenticated = _authenticated_session()
+    cookies = authenticated.cookies.get_dict()
+    headers = dict(authenticated.headers)
+    thread_state = threading.local()
+
+    def worker_session() -> requests.Session:
+        if not hasattr(thread_state, "session"):
+            session = requests.Session()
+            session.headers.update(headers)
+            session.cookies.update(cookies)
+            retries = Retry(
+                total=3,
+                connect=3,
+                read=3,
+                backoff_factor=0.5,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset({"GET"}),
+            )
+            session.mount("https://", HTTPAdapter(max_retries=retries))
+            thread_state.session = session
+        return thread_state.session
+
+    def fetch_one(invoice_id: str) -> dict[str, str | None]:
+        url = f"{BASE_URL}/manager/invoices/{invoice_id}/show"
+        response = worker_session().get(url, timeout=60)
+        response.raise_for_status()
+        if "/login" in response.url:
+            raise RuntimeError("CNET session expired while fetching invoice pages")
+        return {
+            "invoice_id": invoice_id,
+            "po_number": _extract_po_number(response.text),
+        }
+
+    records: list[dict[str, str | None]] = []
+    failures: list[str] = []
+    total = len(normalized_ids)
+    with ThreadPoolExecutor(max_workers=PO_REQUEST_WORKERS) as executor:
+        futures = {
+            executor.submit(fetch_one, invoice_id): invoice_id
+            for invoice_id in normalized_ids
+        }
+        for completed, future in enumerate(as_completed(futures), start=1):
+            invoice_id = futures[future]
+            try:
+                records.append(future.result())
+            except Exception as exc:
+                failures.append(f"{invoice_id}: {exc}")
+            if progress_callback:
+                progress_callback(completed, total)
+
+    if failures:
+        preview = "; ".join(failures[:10])
+        raise RuntimeError(
+            f"Failed to fetch {len(failures)} of {total} invoice pages. "
+            f"No PO data was replaced. Examples: {preview}"
+        )
+
+    return sorted(records, key=lambda record: int(record["invoice_id"]))
+
+
 # Keep the same external function signature
 async def _export_csv_bytes():
     # Keep async wrapper so you don't change any internal calling expectations
     return _login_and_download_csv_bytes()
 
 
+async def _export_csv_exports_bytes():
+    return _login_and_download_csv_exports_bytes()
+
+
 def get_csv_bytes():
     # Same external API: returns bytes
     return asyncio.run(_export_csv_bytes())
+
+
+def get_csv_exports_bytes() -> tuple[bytes, bytes]:
+    """Return (standard invoices CSV, invoice fees CSV)."""
+    return asyncio.run(_export_csv_exports_bytes())

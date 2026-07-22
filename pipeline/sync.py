@@ -5,8 +5,11 @@ from dotenv import load_dotenv
 from supabase import create_client
 import numpy as np
 
-from invoices_export import get_csv_bytes
-from invoices_export.exporter import get_payment_summaries
+from invoices_export.exporter import (
+    get_csv_exports_bytes,
+    get_payment_summaries,
+    get_purchase_order_numbers,
+)
 
 COLUMN_MAP = {
     "Invoice ID": "invoice_id",
@@ -60,6 +63,61 @@ REQUIRED_ENRICHMENT_COLUMNS = {
     "open_amount_with_taxes",
 }
 
+FEE_COLUMN_MAP = {
+    "Invoice ID": "invoice_id",
+    "Reference": "reference",
+    "Vendor (Franchisee)": "vendor_franchisee",
+    "Vendor Address": "vendor_address",
+    "Vendor City": "vendor_city",
+    "Vendor Postal Code": "vendor_postal_code",
+    "Purchasor (Recipient of Services)": "purchaser_recipient_of_services",
+    "Purchasor Address": "purchaser_address",
+    "Purchasor City": "purchaser_city",
+    "Purchasor Postal Code": "purchaser_postal_code",
+    "Work Description": "work_description",
+    "Building Address": "building_address",
+    "Invoice Subtotal": "invoice_subtotal",
+    "GST": "gst",
+    "QST": "qst",
+    "HST": "hst",
+    "PST": "pst",
+    "Invoice Total": "invoice_total",
+    "Franchise Fee One-Shot": "franchise_fee_one_shot",
+    "Franchise Fee Custodial": "franchise_fee_custodial",
+    "Admin Fee": "admin_fee",
+    "Advertising Fee": "advertising_fee",
+    "Brokerage Fee": "brokerage_fee",
+    "Total Owed": "total_owed",
+}
+
+FEE_NUMERIC_COLUMNS = {
+    "invoice_subtotal",
+    "gst",
+    "qst",
+    "hst",
+    "pst",
+    "invoice_total",
+    "franchise_fee_one_shot",
+    "franchise_fee_custodial",
+    "admin_fee",
+    "advertising_fee",
+    "brokerage_fee",
+    "total_owed",
+}
+
+INSERT_BATCH_SIZE = 500
+
+JANITORIAL_DESCRIPTION = "Janitorial Services"
+REGULAR_INVOICE_EXCEPTIONS = {
+    "4057",
+    "3208",
+    "3200",
+    "3199",
+    "3198",
+    "3197",
+    "3350",
+}
+
 SCHEMA_SQL = """
 alter table public.invoices_raw
   add column if not exists partial_payments_amount numeric,
@@ -84,22 +142,179 @@ def _ensure_enrichment_columns(supabase, table: str) -> None:
         ) from exc
 
 
+def _clean_work_descriptions(df: pd.DataFrame) -> None:
+    """Remove the service label only from known Regular invoice exceptions."""
+    if "invoice_id" not in df.columns or "work_description" not in df.columns:
+        return
+
+    invoice_ids = (
+        df["invoice_id"]
+        .astype("string")
+        .str.strip()
+        .str.replace(r"\.0+$", "", regex=True)
+    )
+    exception_mask = invoice_ids.isin(REGULAR_INVOICE_EXCEPTIONS)
+
+    descriptions = df["work_description"].astype("string")
+    cleaned_exceptions = descriptions.loc[exception_mask].str.replace(
+        JANITORIAL_DESCRIPTION,
+        "",
+        case=False,
+        regex=False,
+    ).str.strip()
+
+    # Keep empty descriptions as NULL so the invoices view categorizes them as Regular.
+    df.loc[exception_mask, "work_description"] = cleaned_exceptions.mask(
+        cleaned_exceptions.eq(""),
+        pd.NA,
+    )
+
+
+def _validated_invoice_ids(df: pd.DataFrame, label: str) -> pd.Series:
+    if "Invoice ID" not in df.columns:
+        raise ValueError(f"{label} export is missing required column: Invoice ID")
+    if df.empty:
+        raise ValueError(f"{label} export contains no invoices")
+
+    ids = pd.to_numeric(df["Invoice ID"], errors="coerce")
+    if ids.isna().any():
+        examples = df.loc[ids.isna(), "Invoice ID"].head(10).tolist()
+        raise ValueError(f"{label} export has invalid Invoice ID values: {examples}")
+    if not (ids % 1 == 0).all():
+        examples = df.loc[ids % 1 != 0, "Invoice ID"].head(10).tolist()
+        raise ValueError(f"{label} export has non-integer Invoice ID values: {examples}")
+
+    ids = ids.astype("int64")
+    if ids.duplicated().any():
+        examples = ids.loc[ids.duplicated(keep=False)].head(10).tolist()
+        raise ValueError(f"{label} export has duplicate Invoice IDs: {examples}")
+    return ids
+
+
+def _prepare_exports(
+    invoices_csv_bytes: bytes,
+    fees_csv_bytes: bytes,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    invoices = pd.read_csv(io.BytesIO(invoices_csv_bytes), engine="python")
+    fees = pd.read_csv(io.BytesIO(fees_csv_bytes), engine="python")
+
+    missing_invoice_columns = set(COLUMN_MAP) - set(invoices.columns)
+    if missing_invoice_columns:
+        raise ValueError(
+            "Invoices export is missing required columns: "
+            f"{sorted(missing_invoice_columns)}"
+        )
+    missing_fee_columns = set(FEE_COLUMN_MAP) - set(fees.columns)
+    if missing_fee_columns:
+        raise ValueError(
+            f"Fees export is missing required columns: {sorted(missing_fee_columns)}"
+        )
+
+    invoice_ids = _validated_invoice_ids(invoices, "Invoices")
+    fee_ids = _validated_invoice_ids(fees, "Fees")
+    invoice_id_set = set(invoice_ids.tolist())
+    fee_id_set = set(fee_ids.tolist())
+    if invoice_id_set != fee_id_set:
+        only_invoices = sorted(invoice_id_set - fee_id_set)[:10]
+        only_fees = sorted(fee_id_set - invoice_id_set)[:10]
+        raise ValueError(
+            "Invoice exports do not contain the same Invoice IDs. "
+            f"Only in invoices (up to 10): {only_invoices}; "
+            f"only in fees (up to 10): {only_fees}"
+        )
+
+    invoices = invoices.loc[:, list(COLUMN_MAP)].rename(columns=COLUMN_MAP)
+    invoices["invoice_id"] = invoice_ids
+
+    fees = fees.loc[:, list(FEE_COLUMN_MAP)].rename(columns=FEE_COLUMN_MAP)
+    fees["invoice_id"] = fee_ids
+    for column in FEE_NUMERIC_COLUMNS:
+        raw_values = fees[column]
+        numeric_values = pd.to_numeric(raw_values, errors="coerce")
+        invalid = raw_values.notna() & numeric_values.isna()
+        if invalid.any():
+            examples = raw_values.loc[invalid].head(10).tolist()
+            raise ValueError(
+                f"Fees export has invalid numeric values in {column}: {examples}"
+            )
+        fees[column] = numeric_values
+
+    return invoices, fees
+
+
+def _json_records(df: pd.DataFrame) -> list[dict]:
+    safe = df.replace([np.inf, -np.inf], np.nan)
+    return safe.astype(object).where(pd.notnull(safe), None).to_dict(orient="records")
+
+
+def _insert_in_batches(supabase, table: str, records: list[dict]) -> None:
+    for start in range(0, len(records), INSERT_BATCH_SIZE):
+        supabase.table(table).insert(records[start:start + INSERT_BATCH_SIZE]).execute()
+
+
+def _fetch_invoice_ids(supabase, table: str, page_size: int = 1000) -> list[str]:
+    invoice_ids: list[str] = []
+    offset = 0
+    while True:
+        response = (
+            supabase.table(table)
+            .select("invoice_id")
+            .order("invoice_id", desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        rows = response.data or []
+        invoice_ids.extend(str(row["invoice_id"]).strip() for row in rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+
+    if not invoice_ids:
+        raise RuntimeError(f"No invoice IDs found in {table}")
+    if len(invoice_ids) != len(set(invoice_ids)):
+        raise RuntimeError(f"Duplicate invoice IDs found in {table}")
+    return invoice_ids
+
+
+def update_purchase_orders(progress_callback=None) -> tuple[int, int]:
+    """Rebuild the PO table after every invoice page has been fetched successfully."""
+    load_dotenv()
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    invoices_table = os.getenv("SUPABASE_TABLE")
+    po_table = os.getenv("SUPABASE_PO_TABLE", "invoice_purchase_orders")
+    if not url or not key or not invoices_table:
+        raise RuntimeError(
+            "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_TABLE"
+        )
+
+    supabase = create_client(url, key)
+    invoice_ids = _fetch_invoice_ids(supabase, invoices_table)
+    records = get_purchase_order_numbers(invoice_ids, progress_callback)
+    po_count = sum(bool(record["po_number"]) for record in records)
+
+    # Do not remove the previous snapshot until every CNET page succeeded.
+    supabase.rpc("truncate_table", {"tbl": po_table}).execute()
+    _insert_in_batches(supabase, po_table, records)
+    return len(records), po_count
+
+
 def run_pipeline():
     load_dotenv()
 
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     table = os.getenv("SUPABASE_TABLE")
+    fees_table = os.getenv("SUPABASE_FEES_TABLE", "invoice_fees")
     if not url or not key or not table:
         raise RuntimeError("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_TABLE")
 
     supabase = create_client(url, key)
     _ensure_enrichment_columns(supabase, table)
 
-    csv_bytes = get_csv_bytes()
-    df = pd.read_csv(io.BytesIO(csv_bytes), engine="python")
-
-    df = df.rename(columns=COLUMN_MAP)
+    invoices_csv_bytes, fees_csv_bytes = get_csv_exports_bytes()
+    df, fees_df = _prepare_exports(invoices_csv_bytes, fees_csv_bytes)
+    _clean_work_descriptions(df)
 
     status = df.get("payment_status", pd.Series(dtype=str)).fillna("").astype(str).str.strip().str.lower()
     partial_mask = status.eq("partially paid")
@@ -124,16 +339,18 @@ def run_pipeline():
     dt = pd.to_datetime(df["creation_date"], format="%m/%d/%Y %H:%M", errors="coerce")
     df["creation_date"] = dt.dt.strftime("%Y-%m-%dT%H:%M:%S")  # ISO-ish, JSON safe
 
-    df = df.replace([np.nan, np.inf, -np.inf], None)
-    records = df.to_dict(orient="records")
-    # JSON-safe None handling
-    records = df.where(pd.notnull(df), None).to_dict(orient="records")
+    records = _json_records(df)
+    fee_records = _json_records(fees_df)
+
+    # Rebuild fees first. Extra fee rows are harmless until invoices_raw is refreshed.
+    supabase.rpc("truncate_table", {"tbl": fees_table}).execute()
+    _insert_in_batches(supabase, fees_table, fee_records)
 
     # Truncate via RPC
     supabase.rpc("truncate_table", {"tbl": table}).execute()
 
-    supabase.table(table).insert(records).execute()
-    return df
+    _insert_in_batches(supabase, table, records)
+    return df, len(fees_df)
 
 
 def upload_invoice_creation_overrides(df: pd.DataFrame) -> int:

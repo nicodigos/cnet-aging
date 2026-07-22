@@ -15,7 +15,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from supabase import create_client
 
-from pipeline.sync import run_pipeline, upload_invoice_creation_overrides
+from pipeline.sync import (
+    run_pipeline,
+    update_purchase_orders,
+    upload_invoice_creation_overrides,
+)
 from invoices_export.ui.data_access import fetch_invoice_creation_overrides
 
 
@@ -84,18 +88,49 @@ if last_sync:
 else:
     st.info("Last synchronization: No data yet")
 
-if st.button("Export & Upload", type="primary"):
+export_col, po_col = st.columns(2)
+
+with export_col:
+    export_clicked = st.button("Export & Upload", type="primary")
+
+with po_col:
+    update_pos_clicked = st.button("Update POs")
+
+if export_clicked:
     try:
         with st.spinner("Exporting and uploading..."):
-            df = run_pipeline()
+            df, fee_count = run_pipeline()
 
-        st.success(f"Uploaded {len(df):,} rows")
+        st.cache_data.clear()
+        st.success(
+            f"Uploaded {len(df):,} invoices and {fee_count:,} fee records"
+        )
 
         last_sync = get_last_sync_time()
         if last_sync:
             st.info(f"Last synchronization: {last_sync}")
     except Exception as e:
         st.error(f"Upload failed: {e}")
+
+if update_pos_clicked:
+    progress = st.progress(0, text="Preparing PO update...")
+
+    def show_po_progress(completed: int, total: int) -> None:
+        progress.progress(
+            completed / total,
+            text=f"Fetching POs: {completed:,} of {total:,} invoices",
+        )
+
+    try:
+        total_count, po_count = update_purchase_orders(show_po_progress)
+        st.cache_data.clear()
+        progress.progress(1.0, text="PO update complete")
+        st.success(
+            f"Updated {total_count:,} invoices; {po_count:,} have a PO number"
+        )
+    except Exception as e:
+        progress.empty()
+        st.error(f"PO update failed: {e}")
 
 st.divider()
 

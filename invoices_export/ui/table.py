@@ -2,6 +2,27 @@ import streamlit as st
 import pandas as pd
 
 
+TAX_COLUMNS = [
+    "gst_qc",
+    "qst_qc",
+    "hst_on",
+    "gst_ab",
+    "gst_bc",
+    "pst_bc",
+    "hst_nb",
+    "pst_mb",
+    "gst_mb",
+    "hst_nl",
+    "gst_nt",
+    "hst_ns",
+    "gst_nu",
+    "hst_pe",
+    "pst_sk",
+    "gst_sk",
+    "gst_yt",
+]
+
+
 def render_past_due_table(table_df: pd.DataFrame):
     st.divider()
     st.subheader("Unpaid Table")
@@ -16,6 +37,8 @@ def render_past_due_table(table_df: pd.DataFrame):
 
     cols = [
         "invoice_id",
+        "po_number",
+        "building_address",
         "issue_date",
         "invoice_type",
         "past_due",
@@ -23,7 +46,9 @@ def render_past_due_table(table_df: pd.DataFrame):
         "vendor_company_name",
         "payment_status",
         "days_since_issue",
+        "total_amount_without_taxes",
         "total_amount_with_taxes",
+        *TAX_COLUMNS,
         "partially_paid",
         "work_description",
     ]
@@ -44,7 +69,16 @@ def render_past_due_table(table_df: pd.DataFrame):
             return "background-color: #2e7d32; color: white;"
 
     style = table_df.style
-    money_cols = [c for c in ["total_amount_with_taxes", "partially_paid"] if c in table_df.columns]
+    money_cols = [
+        c
+        for c in [
+            "total_amount_without_taxes",
+            "total_amount_with_taxes",
+            *TAX_COLUMNS,
+            "partially_paid",
+        ]
+        if c in table_df.columns
+    ]
     if money_cols:
         style = style.format({c: "{:,.2f}" for c in money_cols})
 

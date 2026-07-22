@@ -28,7 +28,17 @@ def fetch_all_rows(page_size: int = 1000, max_pages: int = 5000) -> pd.DataFrame
             .select(
                 "invoice_id,issue_date,creation_date,invoice_type,"
                 "buyer_company_name,vendor_company_name,payment_status,"
-                "days_since_issue,past_due,total_amount_with_taxes,work_description"
+                "days_since_issue,past_due,total_amount_without_taxes,"
+                "total_amount_with_taxes,gst_qc,qst_qc,hst_on,gst_ab,gst_bc,"
+                "pst_bc,hst_nb,pst_mb,gst_mb,hst_nl,gst_nt,hst_ns,gst_nu,"
+                "hst_pe,pst_sk,gst_sk,gst_yt,work_description,po_number,"
+                "building_address,fee_reference,fee_vendor_franchisee,"
+                "fee_vendor_address,fee_vendor_city,fee_vendor_postal_code,"
+                "fee_purchaser,fee_purchaser_address,fee_purchaser_city,"
+                "fee_purchaser_postal_code,fee_work_description,invoice_subtotal,"
+                "fee_gst,fee_qst,fee_hst,fee_pst,invoice_total,"
+                "franchise_fee_one_shot,franchise_fee_custodial,admin_fee,"
+                "advertising_fee,brokerage_fee,total_owed,fees_updated_at"
             )
             .order("invoice_id", desc=False)
             .range(offset, offset + page_size - 1)
