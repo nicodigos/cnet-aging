@@ -89,6 +89,15 @@ class ReportTests(unittest.TestCase):
                 self.assertNotIn("fee_gst", html)
                 self.assertNotIn("total_owed", html)
                 self.assertNotIn("partially_paid", html)
+                self.assertIn('data-key="work_description"', html)
+                self.assertIn('data-key="building_address"', html)
+                self.assertIn("table-layout: fixed", html)
+                self.assertIn('th[data-key="work_description"]', html)
+                self.assertIn("width: 28%", html)
+                self.assertIn('th[data-key="building_address"]', html)
+                self.assertIn("width: 18%", html)
+                self.assertIn("word-break: normal", html)
+                self.assertIn("page-break-inside: avoid", html)
 
     def test_partition_paths_are_sanitized(self):
         sanitized = sanitize_path_part("Vendor / A:*?")

@@ -179,14 +179,18 @@
             word-break: normal;
         }
 
-        /* Work Description takes the remaining space (it wraps) */
+        /* Long text columns stay readable on screen and in print. */
         th.workdesc,
-        td.workdesc {
+        td.workdesc,
+        th[data-key="work_description"],
+        td[data-key="work_description"],
+        th[data-key="building_address"],
+        td[data-key="building_address"] {
             text-align: left;
-            /* keep description readable */
             white-space: normal;
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            overflow-wrap: break-word;
+            word-break: normal;
+            hyphens: none;
         }
 
         .subtotal td {
@@ -242,22 +246,90 @@
         }
 
         @media print {
+            @page {
+                size: letter portrait;
+                margin: 8mm;
+            }
+
             .pastdue-filters {
                 display: none !important;
             }
 
             body {
-                margin: 10mm;
+                margin: 0;
+                font-size: 8.5px;
+            }
+
+            table {
+                table-layout: fixed;
+            }
+
+            th,
+            td {
+                padding: 4px 3px;
+                overflow-wrap: break-word;
+                word-break: normal;
+                hyphens: none;
+            }
+
+            th {
+                overflow-wrap: normal;
+            }
+
+            th[data-key="invoice_id"],
+            td[data-key="invoice_id"] {
+                width: 7%;
+            }
+
+            th[data-key="issue_date"],
+            td[data-key="issue_date"] {
+                width: 10%;
+                white-space: nowrap;
+            }
+
+            th[data-key="invoice_type"],
+            td[data-key="invoice_type"] {
+                width: 8%;
+            }
+
+            th[data-key="days_since_issue"],
+            td[data-key="days_since_issue"] {
+                width: 9%;
+            }
+
+            th[data-key="past_due"],
+            td[data-key="past_due"] {
+                width: 7%;
+            }
+
+            th[data-key="total_amount_with_taxes"],
+            td[data-key="total_amount_with_taxes"] {
+                width: 13%;
+                white-space: nowrap;
+            }
+
+            th[data-key="work_description"],
+            td[data-key="work_description"] {
+                width: 28%;
+            }
+
+            th[data-key="building_address"],
+            td[data-key="building_address"] {
+                width: 18%;
             }
 
             .vendor-section,
             table,
             tbody,
-            tr,
             td,
             th {
                 break-inside: auto !important;
                 page-break-inside: auto !important;
+            }
+
+            tr {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
             }
 
             thead {
@@ -273,6 +345,11 @@
             table {
                 break-before: auto !important;
                 page-break-before: auto !important;
+            }
+
+            h3 {
+                break-after: avoid-page;
+                page-break-after: avoid;
             }
         }
     </style>
@@ -581,7 +658,8 @@
 
                     {% if k in ['past_due', 'past due'] %}
                     {% set is_true = vstr in ['true','1','yes','y','past due','overdue'] %}
-                    <td class="{{ 'pastdue-yes' if is_true else 'pastdue-no' }}" data-sort="{{ 1 if is_true else 0 }}">
+                    <td class="{{ 'pastdue-yes' if is_true else 'pastdue-no' }}" data-key="{{ key }}"
+                        data-sort="{{ 1 if is_true else 0 }}">
                         {{ value }}
                     </td>
 
@@ -599,12 +677,12 @@
                         {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha = 0.38 %}{%
                             endif %}
 
-                            <td class="heat" data-sort="{{ value|float }}"
+                            <td class="heat" data-key="{{ key }}" data-sort="{{ value|float }}"
                                 style="background-color: rgba(var(--heat-blue-r), var(--heat-blue-g), var(--heat-blue-b), {{ alpha }});">
                                 {{ value }}
                             </td>
                             {% else %}
-                            <td data-sort="{{ value|float }}">{{ value }}</td>
+                            <td data-key="{{ key }}" data-sort="{{ value|float }}">{{ value }}</td>
                             {% endif %}
 
                             {% elif k in ['total_amount_with_taxes', 'total amount with taxes', 'partially_paid', 'partially paid'] %}
@@ -617,16 +695,16 @@
                                 {% if alpha < 0 %}{% set alpha=0 %}{% endif %} {% if alpha> 0.38 %}{% set alpha = 0.38
                                     %}{% endif %}
 
-                                    <td class="heat" data-sort="{{ value|float }}"
+                                    <td class="heat" data-key="{{ key }}" data-sort="{{ value|float }}"
                                         style="background-color: rgba(var(--heat-green-r), var(--heat-green-g), var(--heat-green-b), {{ alpha }});">
                                         {{ value }}
                                     </td>
 
                                     {% else %}
                                     {% if value is number %}
-                                    <td data-sort="{{ value }}">{{ value }}</td>
+                                    <td data-key="{{ key }}" data-sort="{{ value }}">{{ value }}</td>
                                     {% else %}
-                                    <td data-sort="{{ value|string|lower }}">{{ value }}</td>
+                                    <td data-key="{{ key }}" data-sort="{{ value|string|lower }}">{{ value }}</td>
                                     {% endif %}
                                     {% endif %}
                                     {% endfor %}
