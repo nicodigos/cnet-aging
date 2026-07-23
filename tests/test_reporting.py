@@ -98,13 +98,12 @@ class ReportTests(unittest.TestCase):
                 self.assertIn("width: 18%", html)
                 self.assertIn("word-break: normal", html)
                 self.assertIn("page-break-inside: avoid", html)
-                self.assertIn('data-print-orientation="portrait"', html)
-                self.assertIn('data-print-orientation="landscape"', html)
-                self.assertIn("Print Portrait", html)
-                self.assertIn("Print Landscape", html)
-                self.assertIn("applyPrintOrientation", html)
+                self.assertIn("data-print-report", html)
+                self.assertIn(">Print</button>", html)
                 self.assertIn("window.print()", html)
-                self.assertIn("print_layout", html)
+                self.assertNotIn("size: letter", html)
+                self.assertNotIn("data-print-orientation", html)
+                self.assertNotIn("applyPrintOrientation", html)
 
     def test_partition_paths_are_sanitized(self):
         sanitized = sanitize_path_part("Vendor / A:*?")
