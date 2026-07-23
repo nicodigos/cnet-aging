@@ -213,7 +213,8 @@
             gap: 6px;
         }
 
-        .pastdue-filters button {
+        .pastdue-filters button,
+        .print-layout-controls button {
             font-size: 10px;
             padding: 4px 8px;
             border: 1px solid var(--line);
@@ -222,8 +223,17 @@
             border-radius: 6px;
         }
 
-        .pastdue-filters button.active {
+        .pastdue-filters button.active,
+        .print-layout-controls button:hover {
             background: var(--panel);
+        }
+
+        .print-layout-controls {
+            display: flex;
+            gap: 6px;
+            margin-left: 6px;
+            padding-left: 12px;
+            border-left: 1px solid var(--line);
         }
 
         @media print {
@@ -232,7 +242,8 @@
                 margin: 8mm;
             }
 
-            .pastdue-filters {
+            .pastdue-filters,
+            .print-layout-controls {
                 display: none !important;
             }
 
@@ -530,6 +541,30 @@
             window.addEventListener("beforeprint", () => {
                 updateAllSubtotalsOnly();
             });
+
+            function applyPrintOrientation(orientation) {
+                const normalized = orientation === "landscape" ? "landscape" : "portrait";
+                let style = document.getElementById("print-page-orientation");
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = "print-page-orientation";
+                    document.head.appendChild(style);
+                }
+                style.textContent = `@page { size: letter ${normalized}; margin: 8mm; }`;
+                document.body.dataset.printOrientation = normalized;
+            }
+
+            const requestedOrientation = new URLSearchParams(window.location.search).get("print_layout");
+            if (requestedOrientation === "portrait" || requestedOrientation === "landscape") {
+                applyPrintOrientation(requestedOrientation);
+            }
+
+            document.querySelectorAll("[data-print-orientation]").forEach(button => {
+                button.addEventListener("click", () => {
+                    applyPrintOrientation(button.dataset.printOrientation);
+                    window.print();
+                });
+            });
         });
     </script>
 
@@ -545,6 +580,11 @@
                 <button data-filter="all" class="active">All</button>
                 <button data-filter="true">Past Due</button>
                 <button data-filter="false">Not Past Due</button>
+            </div>
+
+            <div class="print-layout-controls" aria-label="Print layout">
+                <button type="button" data-print-orientation="portrait">Print Portrait</button>
+                <button type="button" data-print-orientation="landscape">Print Landscape</button>
             </div>
         </div>
 
