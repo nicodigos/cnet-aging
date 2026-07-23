@@ -54,6 +54,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn("gst_qc", hidden)
         self.assertIn("fee_gst", hidden)
         self.assertIn("total_owed", hidden)
+        self.assertIn("partially_paid", hidden)
         self.assertTrue(set(REPORT_DETAIL_COLUMNS_TO_HIDE).issubset(hidden))
 
     def test_full_and_partitioned_reports_hide_details_but_keep_building(self):
@@ -87,6 +88,7 @@ class ReportTests(unittest.TestCase):
                 self.assertNotIn("gst_qc", html)
                 self.assertNotIn("fee_gst", html)
                 self.assertNotIn("total_owed", html)
+                self.assertNotIn("partially_paid", html)
 
     def test_partition_paths_are_sanitized(self):
         sanitized = sanitize_path_part("Vendor / A:*?")

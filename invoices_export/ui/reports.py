@@ -64,6 +64,7 @@ def _report_hidden_columns():
         "open_amount_with_taxes",
         "partial_payments_amount",
         "partial_payments_count",
+        "partially_paid",
         *REPORT_DETAIL_COLUMNS_TO_HIDE,
     ]
 
