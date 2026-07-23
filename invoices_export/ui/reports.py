@@ -10,6 +10,64 @@ import streamlit as st
 from reporting.report import ClientReportGenerator
 
 
+REPORT_DETAIL_COLUMNS_TO_HIDE = [
+    "po_number",
+    "total_amount_without_taxes",
+    "gst_qc",
+    "qst_qc",
+    "hst_on",
+    "gst_ab",
+    "gst_bc",
+    "pst_bc",
+    "hst_nb",
+    "pst_mb",
+    "gst_mb",
+    "hst_nl",
+    "gst_nt",
+    "hst_ns",
+    "gst_nu",
+    "hst_pe",
+    "pst_sk",
+    "gst_sk",
+    "gst_yt",
+    "fee_reference",
+    "fee_vendor_franchisee",
+    "fee_vendor_address",
+    "fee_vendor_city",
+    "fee_vendor_postal_code",
+    "fee_purchaser",
+    "fee_purchaser_address",
+    "fee_purchaser_city",
+    "fee_purchaser_postal_code",
+    "fee_work_description",
+    "invoice_subtotal",
+    "fee_gst",
+    "fee_qst",
+    "fee_hst",
+    "fee_pst",
+    "invoice_total",
+    "franchise_fee_one_shot",
+    "franchise_fee_custodial",
+    "admin_fee",
+    "advertising_fee",
+    "brokerage_fee",
+    "total_owed",
+    "fees_updated_at",
+]
+
+
+def _report_hidden_columns():
+    return [
+        "creation_date",
+        "payment_status",
+        "payment_status_norm",
+        "open_amount_with_taxes",
+        "partial_payments_amount",
+        "partial_payments_count",
+        *REPORT_DETAIL_COLUMNS_TO_HIDE,
+    ]
+
+
 def init_reports_state():
     # Full report (single HTML)
     st.session_state.setdefault("html_report_bytes", None)
@@ -49,14 +107,7 @@ def _zip_folder_bytes(root_dir: Path) -> bytes:
 
 
 def generate_full_html_report_to_session(df_f, report_generator: ClientReportGenerator):
-    hide_cols = [
-        "creation_date",
-        "payment_status",
-        "payment_status_norm",
-        "open_amount_with_taxes",
-        "partial_payments_amount",
-        "partial_payments_count",
-    ]
+    hide_cols = _report_hidden_columns()
 
     df_report = _prepare_report_amount_columns(df_f)
 
@@ -79,14 +130,7 @@ def generate_partitioned_reports_zip_to_session(df_f, report_generator: ClientRe
     Generates vendor/buyer partitioned HTML files to a temp folder (inside report_generator.output_dir),
     then zips that folder and stores bytes in session for download.
     """
-    hide_cols = [
-        "creation_date",
-        "payment_status",
-        "payment_status_norm",
-        "open_amount_with_taxes",
-        "partial_payments_amount",
-        "partial_payments_count",
-    ]
+    hide_cols = _report_hidden_columns()
 
     df_report = _prepare_report_amount_columns(df_f)
 
